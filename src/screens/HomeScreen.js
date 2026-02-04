@@ -271,78 +271,88 @@ export default function HomeScreen() {
               </View>
             </View>
           </View>
+        </LinearGradient>
 
-          {/* ===== 메인 요약 카드 ===== */}
-          <View style={styles.summaryCard}>
-            {/* 잔액 */}
-            <View style={styles.balanceSection}>
-              <Text style={styles.balanceLabel}>이번 달 잔액</Text>
-              <Text style={[styles.balanceAmount, { color: balance >= 0 ? Colors.income : Colors.expense }]}>
-                {balance < 0 ? '-' : '+'}{formatMoney(balance)}
-              </Text>
+        {/* ===== 메인 요약 카드 (그라데이션 밖) ===== */}
+        <View style={styles.dashboardContainer}>
+          {/* 잔액 카드 */}
+          <View style={styles.balanceCard}>
+            <View style={styles.balanceHeader}>
+              <View style={styles.balanceIconWrap}>
+                <Ionicons name="wallet" size={20} color={Colors.primary} />
+              </View>
+              <Text style={styles.balanceTitle}>이번 달 잔액</Text>
             </View>
-
-            {/* 수입/지출 */}
-            <View style={styles.ieRow}>
-              <View style={styles.ieItem}>
-                <View style={[styles.ieIcon, { backgroundColor: Colors.income + '20' }]}>
-                  <Ionicons name="trending-up" size={16} color={Colors.income} />
-                </View>
-                <View>
-                  <Text style={styles.ieLabel}>수입</Text>
-                  <Text style={[styles.ieValue, { color: Colors.income }]}>{formatMoney(totalIncome)}</Text>
-                </View>
-              </View>
-              <View style={styles.ieDivider} />
-              <View style={styles.ieItem}>
-                <View style={[styles.ieIcon, { backgroundColor: Colors.expense + '20' }]}>
-                  <Ionicons name="trending-down" size={16} color={Colors.expense} />
-                </View>
-                <View>
-                  <Text style={styles.ieLabel}>지출</Text>
-                  <Text style={[styles.ieValue, { color: Colors.expense }]}>{formatMoney(totalExpense)}</Text>
-                </View>
-              </View>
+            <Text style={[styles.balanceAmount, { color: balance >= 0 ? Colors.income : Colors.expense }]}>
+              {balance < 0 ? '-' : '+'}{formatMoney(balance)}
+            </Text>
+            <View style={styles.balanceBar}>
+              <View style={[styles.balanceBarIncome, { flex: totalIncome || 1 }]} />
+              <View style={[styles.balanceBarExpense, { flex: totalExpense || 1 }]} />
             </View>
+          </View>
 
-            {/* 지출 상세 (공금 + 용돈) */}
-            <View style={styles.expenseDetail}>
-              <View style={styles.expenseDetailItem}>
-                <Ionicons name="people-outline" size={14} color={Colors.textGray} />
-                <Text style={styles.expenseDetailLabel}>공금</Text>
-                <Text style={styles.expenseDetailValue}>{formatMoney(sharedExpense)}</Text>
+          {/* 수입/지출 카드 */}
+          <View style={styles.ieCardRow}>
+            <View style={[styles.ieCard, { borderLeftColor: Colors.income }]}>
+              <View style={styles.ieCardHeader}>
+                <View style={[styles.ieIcon, { backgroundColor: Colors.income + '15' }]}>
+                  <Ionicons name="arrow-down-circle" size={18} color={Colors.income} />
+                </View>
+                <Text style={styles.ieCardLabel}>수입</Text>
               </View>
-              <View style={styles.expenseDetailDot} />
-              <View style={styles.expenseDetailItem}>
-                <Ionicons name="wallet-outline" size={14} color={Colors.textGray} />
-                <Text style={styles.expenseDetailLabel}>용돈</Text>
-                <Text style={styles.expenseDetailValue}>{formatMoney(totalAllowance)}</Text>
+              <Text style={[styles.ieCardAmount, { color: Colors.income }]}>{formatMoney(totalIncome)}</Text>
+            </View>
+            <View style={[styles.ieCard, { borderLeftColor: Colors.expense }]}>
+              <View style={styles.ieCardHeader}>
+                <View style={[styles.ieIcon, { backgroundColor: Colors.expense + '15' }]}>
+                  <Ionicons name="arrow-up-circle" size={18} color={Colors.expense} />
+                </View>
+                <Text style={styles.ieCardLabel}>지출</Text>
+              </View>
+              <Text style={[styles.ieCardAmount, { color: Colors.expense }]}>{formatMoney(totalExpense)}</Text>
+              <View style={styles.ieCardSub}>
+                <View style={styles.ieSubItem}>
+                  <View style={[styles.ieSubDot, { backgroundColor: Colors.primary }]} />
+                  <Text style={styles.ieSubLabel}>공금</Text>
+                  <Text style={styles.ieSubValue}>{formatMoney(sharedExpense)}</Text>
+                </View>
+                <View style={styles.ieSubItem}>
+                  <View style={[styles.ieSubDot, { backgroundColor: Colors.personal }]} />
+                  <Text style={styles.ieSubLabel}>용돈</Text>
+                  <Text style={styles.ieSubValue}>{formatMoney(totalAllowance)}</Text>
+                </View>
               </View>
             </View>
           </View>
 
-          {/* ===== 내 용돈 ===== */}
+          {/* 내 용돈 */}
           {myAllowance > 0 && (
             <View style={styles.myAllowanceCard}>
               <View style={styles.myAllowanceHeader}>
-                <Text style={styles.myAllowanceTitle}>💰 내 용돈</Text>
-                <Text style={[styles.myAllowanceRemain, { color: myAllowanceRemain >= 0 ? '#A8F0C6' : '#FF8E8E' }]}>
+                <View style={styles.myAllowanceLeft}>
+                  <View style={[styles.ieIcon, { backgroundColor: Colors.personal + '15' }]}>
+                    <Ionicons name="cash" size={18} color={Colors.personal} />
+                  </View>
+                  <Text style={styles.myAllowanceTitle}>내 용돈</Text>
+                </View>
+                <Text style={[styles.myAllowanceRemain, { color: myAllowanceRemain >= 0 ? Colors.income : Colors.expense }]}>
                   {formatMoney(myAllowanceRemain)} {myAllowanceRemain >= 0 ? '남음' : '초과'}
                 </Text>
               </View>
               <View style={styles.myAllowanceBar}>
-                <View style={[styles.myAllowanceBarFill, { 
+                <View style={[styles.myAllowanceBarFill, {
                   width: `${myAllowancePct}%`,
                   backgroundColor: myAllowancePct >= 90 ? Colors.expense : myAllowancePct >= 70 ? Colors.warning : Colors.income
                 }]} />
               </View>
               <View style={styles.myAllowanceFooter}>
                 <Text style={styles.myAllowanceFooterText}>{formatMoney(myAllowance)} 중 {formatMoney(myPersonalExpense)} 사용</Text>
-                <Text style={styles.myAllowanceFooterText}>{myAllowancePct}%</Text>
+                <Text style={[styles.myAllowanceFooterPct, { color: myAllowancePct >= 90 ? Colors.expense : myAllowancePct >= 70 ? Colors.warning : Colors.textGray }]}>{myAllowancePct}%</Text>
               </View>
             </View>
           )}
-        </LinearGradient>
+        </View>
 
         {/* ===== 검색/필터 바 ===== */}
         <View style={styles.filterSection}>
@@ -443,8 +453,8 @@ export default function HomeScreen() {
                     <View style={styles.txMeta}>
                       <Text style={styles.txDate}>{formatDate(item.date)}</Text>
                       {item.type === 'expense' && (
-                        <View style={[styles.txTag, { backgroundColor: isPersonal ? Colors.income + '15' : Colors.primary + '10' }]}>
-                          <Text style={[styles.txTagText, { color: isPersonal ? Colors.income : Colors.primary }]}>
+                        <View style={[styles.txTag, { backgroundColor: isPersonal ? Colors.personal + '15' : Colors.primary + '10' }]}>
+                          <Text style={[styles.txTagText, { color: isPersonal ? Colors.personal : Colors.primary }]}>
                             {isPersonal ? '용돈' : '공금'}
                           </Text>
                         </View>
@@ -505,11 +515,11 @@ export default function HomeScreen() {
                   <Text style={[styles.fundBtnText, { color: Colors.primary }]}>공금</Text>
                 </TouchableOpacity>
                 <TouchableOpacity 
-                  style={[styles.fundBtn, quickFundType === 'personal' && { backgroundColor: Colors.income + '20', borderColor: Colors.income }]} 
+                  style={[styles.fundBtn, quickFundType === 'personal' && { backgroundColor: Colors.personal + '20', borderColor: Colors.personal }]}
                   onPress={() => setQuickFundType('personal')}
                 >
-                  <Ionicons name="person" size={16} color={Colors.income} />
-                  <Text style={[styles.fundBtnText, { color: Colors.income }]}>용돈</Text>
+                  <Ionicons name="person" size={16} color={Colors.personal} />
+                  <Text style={[styles.fundBtnText, { color: Colors.personal }]}>용돈</Text>
                 </TouchableOpacity>
               </View>
             )}
@@ -660,8 +670,8 @@ export default function HomeScreen() {
                 <TouchableOpacity style={[styles.fundBtn, editFundType === 'shared' && { backgroundColor: Colors.primary + '20', borderColor: Colors.primary }]} onPress={() => setEditFundType('shared')}>
                   <Ionicons name="people" size={16} color={Colors.primary} /><Text style={[styles.fundBtnText, { color: Colors.primary }]}>공금</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={[styles.fundBtn, editFundType === 'personal' && { backgroundColor: Colors.income + '20', borderColor: Colors.income }]} onPress={() => setEditFundType('personal')}>
-                  <Ionicons name="person" size={16} color={Colors.income} /><Text style={[styles.fundBtnText, { color: Colors.income }]}>용돈</Text>
+                <TouchableOpacity style={[styles.fundBtn, editFundType === 'personal' && { backgroundColor: Colors.personal + '20', borderColor: Colors.personal }]} onPress={() => setEditFundType('personal')}>
+                  <Ionicons name="person" size={16} color={Colors.personal} /><Text style={[styles.fundBtnText, { color: Colors.personal }]}>용돈</Text>
                 </TouchableOpacity>
               </View>
             )}
@@ -698,39 +708,48 @@ const getStyles = (Colors) => StyleSheet.create({
   
   // 헤더
   headerGradient: { paddingTop: Platform.OS === 'ios' ? 60 : 40, paddingBottom: 24, paddingHorizontal: 20, borderBottomLeftRadius: 28, borderBottomRightRadius: 28 },
-  headerTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 },
+  headerTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   welcomeText: { fontSize: 14, color: 'rgba(255,255,255,0.8)' },
   appTitle: { fontSize: 22, fontWeight: '800', color: '#fff', marginTop: 2 },
   headerRight: { flexDirection: 'row', gap: 8 },
   monthBadge: { backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 },
   monthBadgeText: { fontSize: 13, fontWeight: '700', color: '#fff' },
 
-  // 요약 카드
-  summaryCard: { backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 20, padding: 20, backdropFilter: 'blur(10px)' },
-  balanceSection: { alignItems: 'center', marginBottom: 20 },
-  balanceLabel: { fontSize: 13, color: 'rgba(255,255,255,0.7)' },
-  balanceAmount: { fontSize: 32, fontWeight: '800', marginTop: 4 },
-  ieRow: { flexDirection: 'row', justifyContent: 'space-around' },
-  ieItem: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  ieIcon: { width: 36, height: 36, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
-  ieLabel: { fontSize: 12, color: 'rgba(255,255,255,0.7)' },
-  ieValue: { fontSize: 16, fontWeight: '700' },
-  ieDivider: { width: 1, height: 40, backgroundColor: 'rgba(255,255,255,0.2)' },
-  expenseDetail: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: 16, paddingTop: 16, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.1)', gap: 16 },
-  expenseDetailItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  expenseDetailLabel: { fontSize: 12, color: 'rgba(255,255,255,0.6)' },
-  expenseDetailValue: { fontSize: 13, fontWeight: '600', color: '#fff' },
-  expenseDetailDot: { width: 4, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.3)' },
+  // 대시보드
+  dashboardContainer: { paddingHorizontal: 16, marginTop: -8 },
+  balanceCard: { backgroundColor: Colors.surface, borderRadius: 18, padding: 20, marginBottom: 10, borderWidth: 1, borderColor: Colors.border, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 10, elevation: 3 },
+  balanceHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
+  balanceIconWrap: { width: 32, height: 32, borderRadius: 10, backgroundColor: Colors.primary + '12', justifyContent: 'center', alignItems: 'center' },
+  balanceTitle: { fontSize: 14, fontWeight: '600', color: Colors.textGray },
+  balanceAmount: { fontSize: 30, fontWeight: '800', marginBottom: 12 },
+  balanceBar: { flexDirection: 'row', height: 6, borderRadius: 3, overflow: 'hidden', gap: 2 },
+  balanceBarIncome: { backgroundColor: Colors.income, borderRadius: 3 },
+  balanceBarExpense: { backgroundColor: Colors.expense, borderRadius: 3 },
+
+  // 수입/지출 카드
+  ieCardRow: { flexDirection: 'row', gap: 10, marginBottom: 10 },
+  ieCard: { flex: 1, backgroundColor: Colors.surface, borderRadius: 16, padding: 16, borderLeftWidth: 4, borderWidth: 1, borderColor: Colors.border, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 6, elevation: 2 },
+  ieCardHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
+  ieIcon: { width: 32, height: 32, borderRadius: 9, justifyContent: 'center', alignItems: 'center' },
+  ieCardLabel: { fontSize: 13, fontWeight: '600', color: Colors.textGray },
+  ieCardAmount: { fontSize: 17, fontWeight: '800' },
+  ieCardSub: { marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: Colors.divider, gap: 4 },
+  ieSubItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  ieSubDot: { width: 6, height: 6, borderRadius: 3 },
+  ieSubLabel: { fontSize: 11, color: Colors.textGray },
+  ieSubValue: { fontSize: 11, fontWeight: '600', color: Colors.textDark },
 
   // 내 용돈
-  myAllowanceCard: { backgroundColor: 'rgba(0,0,0,0.2)', borderRadius: 14, padding: 14, marginTop: 12 },
+  myAllowanceCard: { backgroundColor: Colors.surface, borderRadius: 16, padding: 16, marginBottom: 10, borderWidth: 1, borderColor: Colors.border, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 6, elevation: 2 },
   myAllowanceHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  myAllowanceTitle: { fontSize: 14, fontWeight: '700', color: '#fff' },
+  myAllowanceLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  myAllowanceTitle: { fontSize: 14, fontWeight: '700', color: Colors.textBlack },
   myAllowanceRemain: { fontSize: 15, fontWeight: '800' },
-  myAllowanceBar: { height: 6, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 3, marginTop: 10 },
+  myAllowanceBar: { height: 6, backgroundColor: Colors.background, borderRadius: 3, marginTop: 12 },
   myAllowanceBarFill: { height: 6, borderRadius: 3 },
-  myAllowanceFooter: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 6 },
-  myAllowanceFooterText: { fontSize: 11, color: 'rgba(255,255,255,0.6)' },
+  myAllowanceFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 },
+  myAllowanceFooterText: { fontSize: 11, color: Colors.textGray },
+  myAllowanceFooterPct: { fontSize: 12, fontWeight: '700' },
 
   // 검색/필터
   filterSection: { flexDirection: 'row', paddingHorizontal: 20, paddingTop: 20, gap: 10 },

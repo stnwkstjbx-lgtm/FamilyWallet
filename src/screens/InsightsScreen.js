@@ -284,7 +284,7 @@ export default function InsightsScreen() {
               <View style={[styles.fundBar, { flex: sharedPct || 1, backgroundColor: Colors.primary }]}>
                 {sharedPct >= 15 && <Text style={styles.fundBarText}>공금 {sharedPct}%</Text>}
               </View>
-              <View style={[styles.fundBar, { flex: personalPct || 1, backgroundColor: Colors.income }]}>
+              <View style={[styles.fundBar, { flex: personalPct || 1, backgroundColor: Colors.personal }]}>
                 {personalPct >= 15 && <Text style={styles.fundBarText}>용돈 {personalPct}%</Text>}
               </View>
             </View>
@@ -296,8 +296,8 @@ export default function InsightsScreen() {
                 <Text style={styles.fundLegendValue}>{formatMoney(sharedExpense)}</Text>
               </View>
               <View style={styles.fundLegendItem}>
-                <View style={[styles.fundLegendDot, { backgroundColor: Colors.income }]} />
-                <Ionicons name="person" size={12} color={Colors.income} />
+                <View style={[styles.fundLegendDot, { backgroundColor: Colors.personal }]} />
+                <Ionicons name="person" size={12} color={Colors.personal} />
                 <Text style={styles.fundLegendLabel}>용돈</Text>
                 <Text style={styles.fundLegendValue}>{formatMoney(personalExpense)}</Text>
               </View>
@@ -362,7 +362,7 @@ export default function InsightsScreen() {
                 <Text style={styles.catName}>{ALL_CATEGORY_NAMES[cat] || cat}</Text>
                 <View style={styles.catFundSplit}>
                   {data.shared > 0 && <View style={[styles.catFundDot, { backgroundColor: Colors.primary }]} />}
-                  {data.personal > 0 && <View style={[styles.catFundDot, { backgroundColor: Colors.income }]} />}
+                  {data.personal > 0 && <View style={[styles.catFundDot, { backgroundColor: Colors.personal }]} />}
                 </View>
                 <Text style={styles.catAmount}>{formatMoney(data.total)}</Text>
                 <Text style={styles.catPct}>{Math.round((data.total / totalExpense) * 100)}%</Text>
@@ -455,9 +455,9 @@ export default function InsightsScreen() {
                       <View style={styles.txTitleRow}>
                         <Text style={styles.txTitle} numberOfLines={1}>{item.memo || ALL_CATEGORY_NAMES[item.category] || '기타'}</Text>
                         {item.type === 'expense' && (
-                          <View style={[styles.fundTag, { backgroundColor: isPersonal ? Colors.income + '15' : Colors.primary + '12' }]}>
-                            <Ionicons name={isPersonal ? 'person' : 'people'} size={9} color={isPersonal ? Colors.income : Colors.primary} />
-                            <Text style={[styles.fundTagText, { color: isPersonal ? Colors.income : Colors.primary }]}>{isPersonal ? '용돈' : '공금'}</Text>
+                          <View style={[styles.fundTag, { backgroundColor: isPersonal ? Colors.personal + '15' : Colors.primary + '12' }]}>
+                            <Ionicons name={isPersonal ? 'person' : 'people'} size={9} color={isPersonal ? Colors.personal : Colors.primary} />
+                            <Text style={[styles.fundTagText, { color: isPersonal ? Colors.personal : Colors.primary }]}>{isPersonal ? '용돈' : '공금'}</Text>
                           </View>
                         )}
                       </View>
