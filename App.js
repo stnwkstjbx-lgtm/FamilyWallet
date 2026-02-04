@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { View, StyleSheet } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, StyleSheet, Linking, Alert, Platform } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { ThemeProvider, useTheme } from './src/constants/ThemeContext';
 import { AuthProvider, useAuth } from './src/constants/AuthContext';
@@ -14,29 +14,82 @@ import OnboardingScreen from './src/screens/OnboardingScreen';
 import WalletSetupScreen from './src/screens/WalletSetupScreen';
 import WalletSelectScreen from './src/screens/WalletSelectScreen';
 
+// 딥링크에서 초대코드 추출
+function parseInviteCode(url) {
+  if (!url) return null;
+  try {
+    // familywallet://join?code=XXXXXX
+    if (url.includes('join') && url.includes('code=')) {
+      const match = url.match(/code=([A-Za-z0-9]+)/);
+      return match ? match[1] : null;
+    }
+  } catch { }
+  return null;
+}
+
 function AppContent() {
   const { colors: Colors } = useTheme();
   const { user, loading: authLoading } = useAuth();
-  const { currentWalletId, userWallets, walletLoading } = useWallet();
+  const { currentWalletId, userWallets, loading: walletLoading, joinWallet } = useWallet();
 
-  // 앱 진입 상태
-  // 'welcome' → 'onboarding' → 'login' or 'signup'
   const [appStage, setAppStage] = useState('welcome');
-  // 로그인 화면의 초기 모드 ('login' | 'signup')
   const [loginMode, setLoginMode] = useState('login');
+  const [pendingInviteCode, setPendingInviteCode] = useState(null);
 
-  // 로딩 → 스켈레톤 UI 사용
+  // 딥링크 수신 처리
+  useEffect(() => {
+    const handleDeepLink = (event) => {
+      const code = parseInviteCode(event.url);
+      if (code) {
+        setPendingInviteCode(code);
+      }
+    };
+
+    // 앱이 이미 열려있을 때 딥링크 수신
+    const subscription = Linking.addEventListener('url', handleDeepLink);
+
+    // 앱이 딥링크로 처음 열릴 때
+    Linking.getInitialURL().then((url) => {
+      const code = parseInviteCode(url);
+      if (code) setPendingInviteCode(code);
+    });
+
+    return () => subscription?.remove();
+  }, []);
+
+  // 로그인 후 대기 중인 초대코드 자동 처리
+  useEffect(() => {
+    if (!user || !pendingInviteCode || walletLoading) return;
+
+    const showAlert = (title, msg) => {
+      if (Platform.OS === 'web') window.alert(`${title}\n\n${msg}`);
+      else Alert.alert(title, msg);
+    };
+
+    const handleJoin = async () => {
+      // 닉네임이 필요하므로 간단하게 프로필 이름 사용
+      const nickname = user.displayName || '사용자';
+      const result = await joinWallet(pendingInviteCode, nickname);
+      if (result.success) {
+        showAlert('합류 완료!', `"${result.walletName}" 가계부에 합류했습니다.`);
+      } else {
+        showAlert('합류 실패', result.message || '초대코드가 유효하지 않습니다.');
+      }
+      setPendingInviteCode(null);
+    };
+
+    handleJoin();
+  }, [user, pendingInviteCode, walletLoading]);
+
+  // 로딩 → 스켈레톤 UI
   if (authLoading || (user && walletLoading)) {
     return <SkeletonLoader />;
   }
 
-  // 로그인 되어 있으면 가계부 흐름으로
+  // 로그인 되어 있으면 가계부 흐름
   if (user) {
-    // 가계부 없음 → 만들기/합류
     if (userWallets.length === 0) return <WalletSetupScreen />;
-    // 가계부 미선택 (goToWalletList로 돌아온 경우 or 2개 이상일 때)
     if (!currentWalletId) return <WalletSelectScreen />;
-    // 메인 앱
     return (
       <NavigationContainer>
         <TabNavigator />
@@ -46,7 +99,11 @@ function AppContent() {
 
   // === 로그인 안 된 상태 ===
 
-  // Welcome 화면
+  // 딥링크로 들어왔지만 로그인 안 된 경우 → 로그인으로 안내
+  if (pendingInviteCode && appStage === 'welcome') {
+    return <LoginScreen initialMode="login" />;
+  }
+
   if (appStage === 'welcome') {
     return (
       <WelcomeScreen
@@ -59,19 +116,17 @@ function AppContent() {
     );
   }
 
-  // 온보딩 화면
   if (appStage === 'onboarding') {
     return (
       <OnboardingScreen
-  onFinish={(mode) => {
-    setLoginMode(mode);  // 'signup' 또는 'login'
-    setAppStage('login');
-  }}
-/>
+        onFinish={(mode) => {
+          setLoginMode(mode);
+          setAppStage('login');
+        }}
+      />
     );
   }
 
-  // 로그인/회원가입 화면
   return <LoginScreen initialMode={loginMode} />;
 }
 
@@ -90,8 +145,3 @@ export default function App() {
     </ErrorBoundary>
   );
 }
-
-const styles = StyleSheet.create({
-  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  loadingText: { marginTop: 12, fontSize: 14 },
-});

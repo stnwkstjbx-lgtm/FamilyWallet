@@ -248,8 +248,14 @@ export function WalletProvider({ children }) {
     }
   };
 
-  // 초대 링크 가져오기 (딥링크 포함)
+  // 초대 딥링크 URL 반환
   const getInviteLink = () => {
+    if (!currentWallet?.inviteCode) return '';
+    return `familywallet://join?code=${currentWallet.inviteCode}`;
+  };
+
+  // 공유용 초대 메시지 반환
+  const getInviteMessage = () => {
     if (!currentWallet?.inviteCode) return '';
     const code = currentWallet.inviteCode;
     const deepLink = `familywallet://join?code=${code}`;
@@ -629,6 +635,7 @@ export function WalletProvider({ children }) {
     // 초대코드 관련
     regenerateInviteCode,
     getInviteLink,
+    getInviteMessage,
     
     // 트랜잭션
     addTransaction,

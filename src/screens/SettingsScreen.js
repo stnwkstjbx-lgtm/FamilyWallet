@@ -126,12 +126,11 @@ export default function SettingsScreen() {
 
   const handleCopyInvite = () => {
     const link = getInviteLink();
-    const code = currentWallet?.inviteCode || '';
     if (typeof navigator !== 'undefined' && navigator.clipboard) {
       navigator.clipboard.writeText(link);
-      showAlert('복사 완료! 📋', `초대 링크가 복사되었습니다.\n\n코드: ${code}\n링크: ${link}`);
+      showAlert('복사 완료!', `초대 링크가 복사되었습니다.\n\n${link}`);
     } else {
-      showAlert('초대 정보', `코드: ${code}\n링크: ${link}`);
+      showAlert('초대 링크', link);
     }
   };
 
