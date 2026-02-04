@@ -256,10 +256,14 @@ export function WalletProvider({ children }) {
 
   // 공유용 초대 메시지 반환
   const getInviteMessage = () => {
-    if (!currentWallet?.inviteCode) return '';
+    if (!currentWallet?.inviteCode || !currentWallet?.name) return '';
     const code = currentWallet.inviteCode;
     const deepLink = `familywallet://join?code=${code}`;
-    return `패밀리월렛에 초대합니다!\n\n초대코드: ${code}\n링크: ${deepLink}`;
+    return `[패밀리월렛] "${currentWallet.name}" 가계부에 초대합니다!\n\n` +
+      `아래 초대코드를 앱에서 입력해 주세요.\n\n` +
+      `초대코드: ${code}\n\n` +
+      `앱 설치 후 → "기존 가계부 합류" → 코드 입력\n` +
+      `또는 링크 탭: ${deepLink}`;
   };
 
   // ══════════════════════════════════════════
