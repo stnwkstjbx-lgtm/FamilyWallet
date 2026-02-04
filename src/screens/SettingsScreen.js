@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, StatusBar, TextInput,
-  TouchableOpacity, Alert, Modal, Switch, Platform, ActivityIndicator,
+  TouchableOpacity, Alert, Modal, Switch, Platform, ActivityIndicator, Share,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -27,7 +27,7 @@ export default function SettingsScreen() {
   const { user, userProfile, logout, updateUserProfile, resetPassword, deleteAccount } = useAuth();
   const {
     currentWalletId, currentWallet, isAdmin, userWallets, maxWallets,
-    switchWallet, leaveWallet, regenerateInviteCode, getInviteLink, goToWalletList, toggleAdmin,
+    switchWallet, leaveWallet, regenerateInviteCode, getInviteLink, getInviteMessage, goToWalletList, toggleAdmin,
   } = useWallet();
   const styles = getStyles(Colors);
 
@@ -131,6 +131,21 @@ export default function SettingsScreen() {
       showAlert('복사 완료!', `초대 링크가 복사되었습니다.\n\n${link}`);
     } else {
       showAlert('초대 링크', link);
+    }
+  };
+
+  const handleShareInvite = async () => {
+    const message = getInviteMessage();
+    if (!message) return;
+    try {
+      await Share.share({
+        message,
+        title: '패밀리월렛 초대',
+      });
+    } catch (error) {
+      if (error.message !== 'User did not share') {
+        showAlert('공유 실패', '공유하기를 사용할 수 없습니다.');
+      }
     }
   };
 
@@ -349,9 +364,15 @@ export default function SettingsScreen() {
             </View>
             <View style={styles.inviteBox}>
               <Text style={styles.inviteCode}>{currentWallet?.inviteCode || ''}</Text>
+            </View>
+            <View style={styles.inviteBtnRow}>
               <TouchableOpacity style={styles.copyBtn} onPress={handleCopyInvite}>
                 <Ionicons name="copy-outline" size={16} color="#FFF" />
                 <Text style={styles.copyBtnText}>링크 복사</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.shareBtn} onPress={handleShareInvite}>
+                <Ionicons name="share-social-outline" size={16} color="#FFF" />
+                <Text style={styles.shareBtnText}>공유하기</Text>
               </TouchableOpacity>
             </View>
             {isAdmin && (
@@ -613,10 +634,13 @@ const getStyles = (Colors) => StyleSheet.create({
   walletListBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 12, paddingVertical: 12, borderRadius: 12, backgroundColor: Colors.background },
   walletListBtnText: { fontSize: 14, fontWeight: '600', color: Colors.primary },
   // 초대
-  inviteBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.background, borderRadius: 12, padding: 14, gap: 12 },
-  inviteCode: { fontSize: 20, fontWeight: 'bold', color: Colors.primary, letterSpacing: 3, flex: 1 },
-  copyBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: Colors.primary, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8 },
+  inviteBox: { alignItems: 'center', backgroundColor: Colors.background, borderRadius: 12, padding: 14, marginBottom: 10 },
+  inviteCode: { fontSize: 22, fontWeight: 'bold', color: Colors.primary, letterSpacing: 4 },
+  inviteBtnRow: { flexDirection: 'row', gap: 10 },
+  copyBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: Colors.primary, borderRadius: 10, paddingVertical: 11 },
   copyBtnText: { fontSize: 13, fontWeight: 'bold', color: '#FFF' },
+  shareBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: '#FEE500', borderRadius: 10, paddingVertical: 11 },
+  shareBtnText: { fontSize: 13, fontWeight: 'bold', color: '#3C1E1E' },
   regenBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, justifyContent: 'center', marginTop: 10, paddingVertical: 8 },
   regenBtnText: { fontSize: 13, color: Colors.primary },
   // 예산
