@@ -51,6 +51,9 @@ export default function HomeScreen() {
   const [fixedName, setFixedName] = useState('');
   const [fixedDay, setFixedDay] = useState('');
   const [fixedType, setFixedType] = useState('expense'); // 'expense' or 'income'
+
+  // ★ 주간 차트 선택 바
+  const [selectedBarIdx, setSelectedBarIdx] = useState(null);
   
   // ★ 검색/필터
   const [showFilter, setShowFilter] = useState(false);
@@ -503,74 +506,96 @@ export default function HomeScreen() {
                 </View>
               </View>
 
-              {/* 주간 지출 차트 + 카테고리 TOP */}
-              <View style={styles.insightRow}>
-                {/* 주간 지출 미니 차트 */}
-                <View style={[styles.insightCard, { flex: 1.1 }]}>
-                  <Text style={styles.insightCardTitle}>주간 지출</Text>
-                  <View style={styles.weekChart}>
-                    {weeklySpending.map((day, idx) => (
-                      <View key={idx} style={styles.weekChartCol}>
+              {/* 주간 지출 차트 (풀 와이드) */}
+              <View style={styles.weekChartCard}>
+                <View style={styles.weekChartHeader}>
+                  <Text style={styles.weekChartTitle}>주간 지출 추이</Text>
+                  {selectedBarIdx !== null && weeklySpending[selectedBarIdx] && (
+                    <View style={styles.weekChartTooltip}>
+                      <Text style={styles.weekChartTooltipText}>
+                        {weeklySpending[selectedBarIdx].label}요일 {formatMoney(weeklySpending[selectedBarIdx].amount)}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+                <View style={styles.weekChart}>
+                  {weeklySpending.map((day, idx) => {
+                    const isSelected = selectedBarIdx === idx;
+                    const barPct = day.amount > 0 ? Math.max((day.amount / weekMax) * 100, 8) : 0;
+                    return (
+                      <TouchableOpacity
+                        key={idx}
+                        style={styles.weekChartCol}
+                        activeOpacity={0.7}
+                        onPress={() => setSelectedBarIdx(isSelected ? null : idx)}
+                      >
+                        {/* 바 위에 금액 표시 */}
+                        {isSelected && day.amount > 0 && (
+                          <Text style={styles.weekChartBarAmount}>
+                            {Math.round(day.amount / 10000) > 0 ? `${Math.round(day.amount / 10000)}만` : `${Math.round(day.amount / 1000)}천`}
+                          </Text>
+                        )}
                         <View style={styles.weekChartBarBg}>
                           <View style={[styles.weekChartBar, {
-                            height: `${day.amount > 0 ? Math.max((day.amount / weekMax) * 100, 8) : 0}%`,
-                            backgroundColor: day.isToday ? Colors.primary : Colors.primary + '40',
+                            height: `${barPct}%`,
+                            backgroundColor: isSelected ? Colors.primary : day.isToday ? Colors.primary : Colors.primary + '35',
+                            width: isSelected ? '80%' : '55%',
                           }]} />
                         </View>
-                        <Text style={[styles.weekChartLabel, day.isToday && { color: Colors.primary, fontWeight: '700' }]}>{day.label}</Text>
-                      </View>
-                    ))}
-                  </View>
+                        <Text style={[styles.weekChartLabel, (day.isToday || isSelected) && { color: Colors.primary, fontWeight: '700' }]}>{day.label}</Text>
+                        {day.isToday && <View style={styles.weekChartTodayDot} />}
+                      </TouchableOpacity>
+                    );
+                  })}
                 </View>
+              </View>
 
-                {/* 카테고리 TOP */}
-                {categoryBreakdown.length > 0 && (
-                  <View style={[styles.insightCard, { flex: 0.9 }]}>
-                    <Text style={styles.insightCardTitle}>카테고리</Text>
-                    {categoryBreakdown.slice(0, 3).map((cat) => {
+              {/* 카테고리 TOP (가로 스크롤) */}
+              {categoryBreakdown.length > 0 && (
+                <View style={styles.catTopCard}>
+                  <Text style={styles.catTopTitle}>지출 카테고리 TOP</Text>
+                  <View style={styles.catTopRow}>
+                    {categoryBreakdown.slice(0, 4).map((cat) => {
                       const pct = totalExpense > 0 ? Math.round((cat.amount / totalExpense) * 100) : 0;
                       return (
-                        <View key={cat.id} style={styles.catMiniRow}>
-                          <View style={[styles.catMiniIcon, { backgroundColor: (Colors.category[cat.id] || Colors.primary) + '15' }]}>
-                            <Ionicons name={cat.icon} size={12} color={Colors.category[cat.id] || Colors.primary} />
+                        <View key={cat.id} style={styles.catTopItem}>
+                          <View style={[styles.catTopIcon, { backgroundColor: (Colors.category[cat.id] || Colors.primary) + '12' }]}>
+                            <Ionicons name={cat.icon} size={16} color={Colors.category[cat.id] || Colors.primary} />
                           </View>
-                          <View style={styles.catMiniInfo}>
-                            <Text style={styles.catMiniName} numberOfLines={1}>{cat.name}</Text>
-                            <View style={styles.catMiniBarBg}>
-                              <View style={[styles.catMiniBarFill, { width: `${pct}%`, backgroundColor: Colors.category[cat.id] || Colors.primary }]} />
-                            </View>
-                          </View>
-                          <Text style={styles.catMiniPct}>{pct}%</Text>
+                          <Text style={styles.catTopName} numberOfLines={1}>{cat.name}</Text>
+                          <Text style={[styles.catTopPct, { color: Colors.category[cat.id] || Colors.primary }]}>{pct}%</Text>
                         </View>
                       );
                     })}
                   </View>
-                )}
-              </View>
+                </View>
+              )}
 
               {/* 빠른 액션 */}
               <View style={styles.quickActions}>
                 <TouchableOpacity style={styles.quickActionBtn} onPress={() => { setQuickType('expense'); setShowQuickAdd(true); }}>
-                  <View style={[styles.quickActionIcon, { backgroundColor: Colors.expense + '15' }]}>
-                    <Ionicons name="remove-circle-outline" size={18} color={Colors.expense} />
+                  <View style={[styles.quickActionIcon, { backgroundColor: Colors.expense + '12' }]}>
+                    <Ionicons name="trending-up-outline" size={18} color={Colors.expense} />
                   </View>
                   <Text style={styles.quickActionLabel}>지출</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.quickActionBtn} onPress={() => { setQuickType('income'); setShowQuickAdd(true); }}>
-                  <View style={[styles.quickActionIcon, { backgroundColor: Colors.income + '15' }]}>
-                    <Ionicons name="add-circle-outline" size={18} color={Colors.income} />
+                  <View style={[styles.quickActionIcon, { backgroundColor: Colors.income + '12' }]}>
+                    <Ionicons name="trending-down-outline" size={18} color={Colors.income} />
                   </View>
                   <Text style={styles.quickActionLabel}>수입</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.quickActionBtn} onPress={() => { setQuickType('fixed'); setShowQuickAdd(true); }}>
-                  <View style={[styles.quickActionIcon, { backgroundColor: Colors.primary + '15' }]}>
-                    <Ionicons name="repeat-outline" size={18} color={Colors.primary} />
-                  </View>
-                  <Text style={styles.quickActionLabel}>고정</Text>
-                </TouchableOpacity>
+                {isAdmin && (
+                  <TouchableOpacity style={styles.quickActionBtn} onPress={() => { setQuickType('fixed'); setShowQuickAdd(true); }}>
+                    <View style={[styles.quickActionIcon, { backgroundColor: Colors.primary + '12' }]}>
+                      <Ionicons name="repeat-outline" size={18} color={Colors.primary} />
+                    </View>
+                    <Text style={styles.quickActionLabel}>고정</Text>
+                  </TouchableOpacity>
+                )}
                 <TouchableOpacity style={styles.quickActionBtn} onPress={() => setShowFilter(true)}>
-                  <View style={[styles.quickActionIcon, { backgroundColor: Colors.textGray + '15' }]}>
-                    <Ionicons name="funnel-outline" size={18} color={Colors.textGray} />
+                  <View style={[styles.quickActionIcon, { backgroundColor: Colors.textGray + '10' }]}>
+                    <Ionicons name="options-outline" size={18} color={Colors.textGray} />
                   </View>
                   <Text style={styles.quickActionLabel}>필터</Text>
                 </TouchableOpacity>
@@ -1155,28 +1180,31 @@ const getStyles = (Colors) => StyleSheet.create({
   fundDetailAmount: { fontSize: 13, fontWeight: '700' },
   fundDetailDivider: { width: 1, height: 20, backgroundColor: Colors.divider },
 
-  // 인사이트 행 (주간 차트 + 카테고리)
-  insightRow: { flexDirection: 'row', gap: 10, marginBottom: 10 },
-  insightCard: { backgroundColor: Colors.surface, borderRadius: 16, padding: 14, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 2 },
-  insightCardTitle: { fontSize: 12, fontWeight: '700', color: Colors.textGray, marginBottom: 10, letterSpacing: 0.3 },
-  // 주간 차트
-  weekChart: { flexDirection: 'row', alignItems: 'flex-end', gap: 4, height: 60 },
+  // 주간 차트 카드 (풀 와이드)
+  weekChartCard: { backgroundColor: Colors.surface, borderRadius: 16, padding: 16, marginBottom: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 2 },
+  weekChartHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  weekChartTitle: { fontSize: 13, fontWeight: '700', color: Colors.textGray, letterSpacing: 0.2 },
+  weekChartTooltip: { backgroundColor: Colors.primary + '12', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 },
+  weekChartTooltipText: { fontSize: 11, fontWeight: '700', color: Colors.primary },
+  weekChart: { flexDirection: 'row', alignItems: 'flex-end', gap: 6, height: 80 },
   weekChartCol: { flex: 1, alignItems: 'center' },
-  weekChartBarBg: { width: '100%', height: 44, justifyContent: 'flex-end', alignItems: 'center' },
-  weekChartBar: { width: '65%', borderRadius: 3, minHeight: 0 },
-  weekChartLabel: { fontSize: 9, color: Colors.textLight, marginTop: 4, fontWeight: '500' },
-  // 카테고리 미니
-  catMiniRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
-  catMiniIcon: { width: 22, height: 22, borderRadius: 6, justifyContent: 'center', alignItems: 'center' },
-  catMiniInfo: { flex: 1 },
-  catMiniName: { fontSize: 10, fontWeight: '600', color: Colors.textBlack, marginBottom: 3 },
-  catMiniBarBg: { height: 4, backgroundColor: Colors.background, borderRadius: 2, overflow: 'hidden' },
-  catMiniBarFill: { height: 4, borderRadius: 2 },
-  catMiniPct: { fontSize: 10, fontWeight: '700', color: Colors.textGray, width: 26, textAlign: 'right' },
+  weekChartBarAmount: { fontSize: 9, fontWeight: '700', color: Colors.primary, marginBottom: 2 },
+  weekChartBarBg: { width: '100%', height: 56, justifyContent: 'flex-end', alignItems: 'center' },
+  weekChartBar: { borderRadius: 4, minHeight: 0 },
+  weekChartLabel: { fontSize: 10, color: Colors.textLight, marginTop: 5, fontWeight: '500' },
+  weekChartTodayDot: { width: 4, height: 4, borderRadius: 2, backgroundColor: Colors.primary, marginTop: 3 },
+  // 카테고리 TOP (가로)
+  catTopCard: { backgroundColor: Colors.surface, borderRadius: 16, padding: 14, marginBottom: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 2 },
+  catTopTitle: { fontSize: 12, fontWeight: '700', color: Colors.textGray, marginBottom: 12, letterSpacing: 0.2 },
+  catTopRow: { flexDirection: 'row', justifyContent: 'space-around' },
+  catTopItem: { alignItems: 'center', gap: 5 },
+  catTopIcon: { width: 36, height: 36, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
+  catTopName: { fontSize: 10, fontWeight: '600', color: Colors.textGray, maxWidth: 50, textAlign: 'center' },
+  catTopPct: { fontSize: 12, fontWeight: '800' },
   // 빠른 액션
-  quickActions: { flexDirection: 'row', justifyContent: 'space-around', backgroundColor: Colors.surface, borderRadius: 16, padding: 14, marginBottom: 6, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 2 },
-  quickActionBtn: { alignItems: 'center', gap: 6 },
-  quickActionIcon: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+  quickActions: { flexDirection: 'row', justifyContent: 'space-around', backgroundColor: Colors.surface, borderRadius: 16, paddingVertical: 14, paddingHorizontal: 10, marginBottom: 6, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 2 },
+  quickActionBtn: { alignItems: 'center', gap: 5 },
+  quickActionIcon: { width: 42, height: 42, borderRadius: 13, justifyContent: 'center', alignItems: 'center' },
   quickActionLabel: { fontSize: 11, fontWeight: '600', color: Colors.textGray },
 
   // 일반 멤버 요약 카드
@@ -1252,8 +1280,8 @@ const getStyles = (Colors) => StyleSheet.create({
   txAmount: { fontSize: 15, fontWeight: '700' },
 
   // FAB
-  fab: { position: 'absolute', right: 20, bottom: 90, flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 18, paddingVertical: 14, borderRadius: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8, elevation: 6 },
-  fabLabel: { fontSize: 15, fontWeight: '700', color: '#fff' },
+  fab: { position: 'absolute', right: 20, bottom: 90, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 20, paddingVertical: 14, borderRadius: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.25, shadowRadius: 12, elevation: 8 },
+  fabLabel: { fontSize: 14, fontWeight: '700', color: '#fff' },
 
   // 모달 공통
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
