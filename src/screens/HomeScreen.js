@@ -883,7 +883,7 @@ export default function HomeScreen() {
                   <View style={styles.txInfo}>
                     <Text style={styles.txTitle} numberOfLines={1}>{item.memo || ALL_CATEGORY_NAMES[item.category] || '기타'}</Text>
                     <View style={styles.txMeta}>
-                      <Text style={styles.txDate}>{item.member || '미지정'}</Text>
+                      <Text style={styles.txDate}>{item.member ? `${item.member} · ` : ''}{ALL_CATEGORY_NAMES[item.category] || '기타'}</Text>
                       {item.type === 'expense' && ftInfo && (
                         <View style={[styles.txTag, { backgroundColor: ftInfo.color + '15' }]}>
                           <Text style={[styles.txTagText, { color: ftInfo.color }]}>
@@ -965,15 +965,23 @@ export default function HomeScreen() {
                   </TouchableOpacity>
                 </View>
 
-                <Text style={styles.inputLabel}>항목명</Text>
-                <TextInput
-                  style={styles.memoInput}
-                  placeholder={fixedType === 'expense' ? '예: 월세, 통신비, 보험료' : '예: 월급, 임대수익, 용돈'}
-                  placeholderTextColor={Colors.textLight}
-                  value={fixedName}
-                  onChangeText={setFixedName}
-                />
+                {/* 1. 지출 출처 (고정 지출일 때만) */}
+                {fixedType === 'expense' && (
+                  <View style={styles.fundSelector}>
+                    {FUND_TYPES.filter(ft => ft.id !== 'personal').map((ft) => (
+                      <TouchableOpacity
+                        key={ft.id}
+                        style={[styles.fundBtn, quickFundType === ft.id && { backgroundColor: ft.color + '20', borderColor: ft.color }]}
+                        onPress={() => setQuickFundType(ft.id)}
+                      >
+                        <Ionicons name={ft.icon} size={14} color={ft.color} />
+                        <Text style={[styles.fundBtnText, { color: ft.color }]}>{ft.name}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
 
+                {/* 2. 금액 */}
                 <Text style={styles.inputLabel}>금액</Text>
                 <TextInput
                   style={styles.amountInput}
@@ -989,6 +997,17 @@ export default function HomeScreen() {
                   </Text>
                 ) : null}
 
+                {/* 3. 항목명 (카테고리) */}
+                <Text style={styles.inputLabel}>항목명</Text>
+                <TextInput
+                  style={styles.memoInput}
+                  placeholder={fixedType === 'expense' ? '예: 월세, 통신비, 보험료' : '예: 월급, 임대수익, 용돈'}
+                  placeholderTextColor={Colors.textLight}
+                  value={fixedName}
+                  onChangeText={setFixedName}
+                />
+
+                {/* 4. 자동 기록일 */}
                 <Text style={styles.inputLabel}>자동 기록일</Text>
                 <View style={styles.fixedDayRow}>
                   <Text style={styles.fixedDayLabel}>매월</Text>
@@ -1003,20 +1022,6 @@ export default function HomeScreen() {
                   />
                   <Text style={styles.fixedDayLabel}>일</Text>
                 </View>
-                {fixedType === 'expense' && (
-                  <View style={styles.fundSelector}>
-                    {FUND_TYPES.filter(ft => ft.id !== 'personal').map((ft) => (
-                      <TouchableOpacity
-                        key={ft.id}
-                        style={[styles.fundBtn, quickFundType === ft.id && { backgroundColor: ft.color + '20', borderColor: ft.color }]}
-                        onPress={() => setQuickFundType(ft.id)}
-                      >
-                        <Ionicons name={ft.icon} size={14} color={ft.color} />
-                        <Text style={[styles.fundBtnText, { color: ft.color }]}>{ft.name}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                )}
                 <Text style={styles.fixedDayHint}>
                   해당 날짜에 {fixedType === 'income' ? '수입(급여 카테고리)' : `${FUND_TYPE_MAP[quickFundType]?.name || '공과금'} 지출(주거 카테고리)`}로 자동 기록됩니다
                 </Text>

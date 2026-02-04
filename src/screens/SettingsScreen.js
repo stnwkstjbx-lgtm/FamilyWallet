@@ -621,8 +621,6 @@ export default function SettingsScreen() {
               <Text style={[styles.fixedToggleText, fixedType === 'income' && { color: Colors.income }]}>수입</Text>
             </TouchableOpacity>
           </View>
-          <TextInput style={styles.modalInput} placeholder="항목명" placeholderTextColor={Colors.textLight} value={fixedName} onChangeText={setFixedName} />
-          <TextInput style={styles.modalInput} placeholder="금액" placeholderTextColor={Colors.textLight} keyboardType="numeric" value={fixedAmount} onChangeText={(t) => setFixedAmount(t.replace(/[^0-9]/g, ''))} />
           {fixedType === 'expense' && (
             <View style={styles.fixedFundTypeRow}>
               {FUND_TYPES.filter(ft => ft.id !== 'personal').map((ft) => (
@@ -637,6 +635,8 @@ export default function SettingsScreen() {
               ))}
             </View>
           )}
+          <TextInput style={styles.modalInput} placeholder="금액" placeholderTextColor={Colors.textLight} keyboardType="numeric" value={fixedAmount} onChangeText={(t) => setFixedAmount(t.replace(/[^0-9]/g, ''))} />
+          <TextInput style={styles.modalInput} placeholder="항목명" placeholderTextColor={Colors.textLight} value={fixedName} onChangeText={setFixedName} />
           <View style={styles.dayRow}><Text style={styles.dayLabel}>매월</Text><TextInput style={styles.dayInput} placeholder="5" placeholderTextColor={Colors.textLight} keyboardType="numeric" maxLength={2} value={fixedDay} onChangeText={(t) => setFixedDay(t.replace(/[^0-9]/g, ''))} /><Text style={styles.dayLabel}>일</Text></View>
           <View style={styles.modalBtns}>
             <TouchableOpacity style={styles.modalCancelBtn} onPress={() => { setShowFixedModal(false); setFixedName(''); setFixedAmount(''); setFixedDay(''); setFixedType('expense'); setFixedFundType('utility'); }}><Text style={styles.modalCancelText}>취소</Text></TouchableOpacity>

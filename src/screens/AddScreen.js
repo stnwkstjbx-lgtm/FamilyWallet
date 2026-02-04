@@ -56,7 +56,6 @@ export default function AddScreen() {
 
   const currentCategories = type === 'expense' ? EXPENSE_CATEGORIES : INCOME_CATEGORIES;
   const myWalletName = currentWallet?.members?.[user?.uid]?.name || userProfile?.name || user?.displayName || '미지정';
-  const myRole = currentWallet?.members?.[user?.uid]?.role || 'member';
   const myAllowance = currentWallet?.members?.[user?.uid]?.allowance || 0;
 
   const handleSave = async () => {
@@ -182,7 +181,49 @@ export default function AddScreen() {
                   </TouchableOpacity>
                 </View>
 
-                {/* 항목명 */}
+                {/* 1. 지출 출처 선택 (고정 지출일 때만) */}
+                {fixedType === 'expense' && (
+                  <View style={styles.fundTypeCard}>
+                    <Text style={styles.fundTypeLabel}>💳 지출 출처</Text>
+                    <View style={styles.fundTypeGrid}>
+                      {FUND_TYPES.filter(ft => ft.id !== 'personal').map((ft) => {
+                        const isActive = fixedFundType === ft.id;
+                        return (
+                          <TouchableOpacity
+                            key={ft.id}
+                            style={[styles.fundTypeChip, isActive && { backgroundColor: ft.color, borderColor: ft.color }]}
+                            onPress={() => setFixedFundType(ft.id)}
+                          >
+                            <Ionicons name={ft.icon} size={16} color={isActive ? '#FFF' : ft.color} />
+                            <Text style={[styles.fundTypeChipText, isActive && { color: '#FFF' }]}>{ft.name}</Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                    <Text style={styles.fundTypeDescText}>
+                      {FUND_TYPE_MAP[fixedFundType]?.desc || ''}
+                    </Text>
+                  </View>
+                )}
+
+                {/* 2. 금액 */}
+                <View style={styles.inputCard}>
+                  <Text style={styles.inputLabel}>금액</Text>
+                  <View style={styles.amountRow}>
+                    <TextInput style={styles.amountInput} placeholder="0" placeholderTextColor={Colors.textLight} keyboardType="numeric" value={amount} onChangeText={(t) => setAmount(t.replace(/[^0-9]/g, ''))} />
+                    <Text style={styles.wonText}>원</Text>
+                  </View>
+                  {amount ? (
+                    <View style={styles.amountPreviewRow}>
+                      <View style={[styles.amountPreviewDot, { backgroundColor: fixedType === 'income' ? Colors.income : Colors.expense }]} />
+                      <Text style={[styles.amountPreview, { color: fixedType === 'income' ? Colors.income : Colors.expense }]}>
+                        매월 {fixedType === 'income' ? '+' : '-'}{parseInt(amount).toLocaleString('ko-KR')}원
+                      </Text>
+                    </View>
+                  ) : null}
+                </View>
+
+                {/* 3. 항목명 (카테고리) */}
                 <View style={styles.inputCard}>
                   <Text style={styles.inputLabel}>항목명</Text>
                   <TextInput
@@ -209,24 +250,7 @@ export default function AddScreen() {
                   </View>
                 </View>
 
-                {/* 금액 */}
-                <View style={styles.inputCard}>
-                  <Text style={styles.inputLabel}>금액</Text>
-                  <View style={styles.amountRow}>
-                    <TextInput style={styles.amountInput} placeholder="0" placeholderTextColor={Colors.textLight} keyboardType="numeric" value={amount} onChangeText={(t) => setAmount(t.replace(/[^0-9]/g, ''))} />
-                    <Text style={styles.wonText}>원</Text>
-                  </View>
-                  {amount ? (
-                    <View style={styles.amountPreviewRow}>
-                      <View style={[styles.amountPreviewDot, { backgroundColor: fixedType === 'income' ? Colors.income : Colors.expense }]} />
-                      <Text style={[styles.amountPreview, { color: fixedType === 'income' ? Colors.income : Colors.expense }]}>
-                        매월 {fixedType === 'income' ? '+' : '-'}{parseInt(amount).toLocaleString('ko-KR')}원
-                      </Text>
-                    </View>
-                  ) : null}
-                </View>
-
-                {/* 자동 기록일 */}
+                {/* 4. 자동 기록일 (메모 역할) */}
                 <View style={styles.inputCard}>
                   <Text style={styles.inputLabel}>자동 기록일</Text>
                   <View style={styles.fixedDayRow}>
@@ -249,31 +273,6 @@ export default function AddScreen() {
                     </Text>
                   </View>
                 </View>
-
-                {/* 지출 출처 선택 (고정 지출일 때만) */}
-                {fixedType === 'expense' && (
-                  <View style={styles.fundTypeCard}>
-                    <Text style={styles.fundTypeLabel}>💳 지출 출처</Text>
-                    <View style={styles.fundTypeGrid}>
-                      {FUND_TYPES.filter(ft => ft.id !== 'personal').map((ft) => {
-                        const isActive = fixedFundType === ft.id;
-                        return (
-                          <TouchableOpacity
-                            key={ft.id}
-                            style={[styles.fundTypeChip, isActive && { backgroundColor: ft.color, borderColor: ft.color }]}
-                            onPress={() => setFixedFundType(ft.id)}
-                          >
-                            <Ionicons name={ft.icon} size={16} color={isActive ? '#FFF' : ft.color} />
-                            <Text style={[styles.fundTypeChipText, isActive && { color: '#FFF' }]}>{ft.name}</Text>
-                          </TouchableOpacity>
-                        );
-                      })}
-                    </View>
-                    <Text style={styles.fundTypeDescText}>
-                      {FUND_TYPE_MAP[fixedFundType]?.desc || ''}
-                    </Text>
-                  </View>
-                )}
 
                 {/* 저장 */}
                 <TouchableOpacity style={styles.saveButton} onPress={handleSaveFixed} activeOpacity={0.85}>
@@ -327,20 +326,6 @@ export default function AddScreen() {
                     )}
                   </View>
                 )}
-
-                {/* 기록자 표시 */}
-                <View style={styles.memberCard}>
-                  <View style={styles.memberAvatar}>
-                    <Text style={styles.memberAvatarText}>{myWalletName.charAt(0)}</Text>
-                  </View>
-                  <View style={styles.memberInfo}>
-                    <Text style={styles.memberName}>{myWalletName}</Text>
-                    <Text style={styles.memberRole}>{myRole === 'admin' ? '관리자' : '멤버'}</Text>
-                  </View>
-                  {myRole === 'admin' && (
-                    <View style={styles.adminBadge}><Ionicons name="shield-checkmark" size={12} color={Colors.primary} /><Text style={styles.adminBadgeText}>관리자</Text></View>
-                  )}
-                </View>
 
                 {/* 금액 */}
                 <View style={styles.inputCard}>
@@ -434,15 +419,6 @@ const getStyles = (Colors) => StyleSheet.create({
   fundTypeDescText: { fontSize: 12, color: Colors.textGray, marginTop: 10 },
   fundTypeHint: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: Colors.divider },
   fundTypeHintText: { fontSize: 12, color: Colors.primary, flex: 1, lineHeight: 17 },
-  // 기록자
-  memberCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.surface, borderRadius: 14, padding: 14, marginBottom: 14, gap: 12, borderWidth: 1, borderColor: Colors.border },
-  memberAvatar: { width: 40, height: 40, borderRadius: 12, backgroundColor: Colors.primary, justifyContent: 'center', alignItems: 'center' },
-  memberAvatarText: { fontSize: 17, fontWeight: 'bold', color: '#FFF' },
-  memberInfo: { flex: 1 },
-  memberName: { fontSize: 15, fontWeight: '700', color: Colors.textBlack },
-  memberRole: { fontSize: 12, color: Colors.textGray, marginTop: 1 },
-  adminBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: Colors.primary + '12', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4 },
-  adminBadgeText: { fontSize: 11, fontWeight: 'bold', color: Colors.primary },
   // 입력 카드
   inputCard: { backgroundColor: Colors.surface, borderRadius: 16, padding: 20, marginBottom: 14, borderWidth: 1, borderColor: Colors.border },
   inputLabel: { fontSize: 13, fontWeight: '700', color: Colors.textGray, marginBottom: 12, letterSpacing: 0.3 },
