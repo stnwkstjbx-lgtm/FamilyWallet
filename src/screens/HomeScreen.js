@@ -271,67 +271,55 @@ export default function HomeScreen() {
               </View>
             </View>
           </View>
-        </LinearGradient>
 
-        {/* ===== 메인 요약 카드 (그라데이션 밖) ===== */}
-        <View style={styles.dashboardContainer}>
-          {/* 잔액 카드 */}
-          <View style={styles.balanceCard}>
-            <View style={styles.balanceHeader}>
-              <View style={styles.balanceIconWrap}>
-                <Ionicons name="wallet" size={20} color={Colors.primary} />
-              </View>
-              <Text style={styles.balanceTitle}>이번 달 잔액</Text>
-            </View>
-            <Text style={[styles.balanceAmount, { color: balance >= 0 ? Colors.income : Colors.expense }]}>
+          {/* 잔액 - 그라데이션 안에서 큰 금액 표시 */}
+          <View style={styles.balanceSection}>
+            <Text style={styles.balanceLabel}>이번 달 잔액</Text>
+            <Text style={styles.balanceAmount}>
               {balance < 0 ? '-' : '+'}{formatMoney(balance)}
             </Text>
-            <View style={styles.balanceBar}>
-              <View style={[styles.balanceBarIncome, { flex: totalIncome || 1 }]} />
-              <View style={[styles.balanceBarExpense, { flex: totalExpense || 1 }]} />
-            </View>
           </View>
+        </LinearGradient>
 
-          {/* 수입/지출 카드 */}
-          <View style={styles.ieCardRow}>
-            <View style={[styles.ieCard, { borderLeftColor: Colors.income }]}>
-              <View style={styles.ieCardHeader}>
-                <View style={[styles.ieIcon, { backgroundColor: Colors.income + '15' }]}>
-                  <Ionicons name="arrow-down-circle" size={18} color={Colors.income} />
-                </View>
-                <Text style={styles.ieCardLabel}>수입</Text>
+        {/* ===== 대시보드 카드들 (그라데이션 위에 플로팅) ===== */}
+        <View style={styles.dashboardContainer}>
+          {/* 수입/지출 요약 카드 */}
+          <View style={styles.summaryRow}>
+            <View style={styles.summaryCard}>
+              <View style={[styles.summaryIconWrap, { backgroundColor: Colors.income + '15' }]}>
+                <Ionicons name="trending-up" size={18} color={Colors.income} />
               </View>
-              <Text style={[styles.ieCardAmount, { color: Colors.income }]}>{formatMoney(totalIncome)}</Text>
+              <Text style={styles.summaryCardLabel}>수입</Text>
+              <Text style={[styles.summaryCardAmount, { color: Colors.income }]}>{formatMoney(totalIncome)}</Text>
             </View>
-            <View style={[styles.ieCard, { borderLeftColor: Colors.expense }]}>
-              <View style={styles.ieCardHeader}>
-                <View style={[styles.ieIcon, { backgroundColor: Colors.expense + '15' }]}>
-                  <Ionicons name="arrow-up-circle" size={18} color={Colors.expense} />
-                </View>
-                <Text style={styles.ieCardLabel}>지출</Text>
+
+            <View style={styles.summaryDivider} />
+
+            <View style={styles.summaryCard}>
+              <View style={[styles.summaryIconWrap, { backgroundColor: Colors.expense + '15' }]}>
+                <Ionicons name="trending-down" size={18} color={Colors.expense} />
               </View>
-              <Text style={[styles.ieCardAmount, { color: Colors.expense }]}>{formatMoney(totalExpense)}</Text>
-              <View style={styles.ieCardSub}>
-                <View style={styles.ieSubItem}>
-                  <View style={[styles.ieSubDot, { backgroundColor: Colors.primary }]} />
-                  <Text style={styles.ieSubLabel}>공금</Text>
-                  <Text style={styles.ieSubValue}>{formatMoney(sharedExpense)}</Text>
+              <Text style={styles.summaryCardLabel}>지출</Text>
+              <Text style={[styles.summaryCardAmount, { color: Colors.expense }]}>{formatMoney(totalExpense)}</Text>
+              <View style={styles.fundBreakdown}>
+                <View style={styles.fundBreakdownItem}>
+                  <View style={[styles.fundDot, { backgroundColor: Colors.primary }]} />
+                  <Text style={styles.fundBreakdownText}>공금 {formatMoney(sharedExpense)}</Text>
                 </View>
-                <View style={styles.ieSubItem}>
-                  <View style={[styles.ieSubDot, { backgroundColor: Colors.personal }]} />
-                  <Text style={styles.ieSubLabel}>용돈</Text>
-                  <Text style={styles.ieSubValue}>{formatMoney(totalAllowance)}</Text>
+                <View style={styles.fundBreakdownItem}>
+                  <View style={[styles.fundDot, { backgroundColor: Colors.personal }]} />
+                  <Text style={styles.fundBreakdownText}>용돈 {formatMoney(totalAllowance)}</Text>
                 </View>
               </View>
             </View>
           </View>
 
-          {/* 내 용돈 */}
+          {/* 내 용돈 카드 */}
           {myAllowance > 0 && (
             <View style={styles.myAllowanceCard}>
               <View style={styles.myAllowanceHeader}>
                 <View style={styles.myAllowanceLeft}>
-                  <View style={[styles.ieIcon, { backgroundColor: Colors.personal + '15' }]}>
+                  <View style={[styles.summaryIconWrap, { backgroundColor: Colors.personal + '15' }]}>
                     <Ionicons name="cash" size={18} color={Colors.personal} />
                   </View>
                   <Text style={styles.myAllowanceTitle}>내 용돈</Text>
@@ -707,40 +695,36 @@ const getStyles = (Colors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
   
   // 헤더
-  headerGradient: { paddingTop: Platform.OS === 'ios' ? 60 : 40, paddingBottom: 24, paddingHorizontal: 20, borderBottomLeftRadius: 28, borderBottomRightRadius: 28 },
-  headerTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  headerGradient: { paddingTop: Platform.OS === 'ios' ? 60 : 40, paddingBottom: 60, paddingHorizontal: 20, borderBottomLeftRadius: 28, borderBottomRightRadius: 28 },
+  headerTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 },
   welcomeText: { fontSize: 14, color: 'rgba(255,255,255,0.8)' },
   appTitle: { fontSize: 22, fontWeight: '800', color: '#fff', marginTop: 2 },
   headerRight: { flexDirection: 'row', gap: 8 },
   monthBadge: { backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 },
   monthBadgeText: { fontSize: 13, fontWeight: '700', color: '#fff' },
 
-  // 대시보드
-  dashboardContainer: { paddingHorizontal: 16, marginTop: -8 },
-  balanceCard: { backgroundColor: Colors.surface, borderRadius: 18, padding: 20, marginBottom: 10, borderWidth: 1, borderColor: Colors.border, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 10, elevation: 3 },
-  balanceHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
-  balanceIconWrap: { width: 32, height: 32, borderRadius: 10, backgroundColor: Colors.primary + '12', justifyContent: 'center', alignItems: 'center' },
-  balanceTitle: { fontSize: 14, fontWeight: '600', color: Colors.textGray },
-  balanceAmount: { fontSize: 30, fontWeight: '800', marginBottom: 12 },
-  balanceBar: { flexDirection: 'row', height: 6, borderRadius: 3, overflow: 'hidden', gap: 2 },
-  balanceBarIncome: { backgroundColor: Colors.income, borderRadius: 3 },
-  balanceBarExpense: { backgroundColor: Colors.expense, borderRadius: 3 },
+  // 잔액 (그라데이션 안)
+  balanceSection: { alignItems: 'center', paddingBottom: 8 },
+  balanceLabel: { fontSize: 13, color: 'rgba(255,255,255,0.7)', marginBottom: 4 },
+  balanceAmount: { fontSize: 34, fontWeight: '800', color: '#FFFFFF' },
 
-  // 수입/지출 카드
-  ieCardRow: { flexDirection: 'row', gap: 10, marginBottom: 10 },
-  ieCard: { flex: 1, backgroundColor: Colors.surface, borderRadius: 16, padding: 16, borderLeftWidth: 4, borderWidth: 1, borderColor: Colors.border, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 6, elevation: 2 },
-  ieCardHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
-  ieIcon: { width: 32, height: 32, borderRadius: 9, justifyContent: 'center', alignItems: 'center' },
-  ieCardLabel: { fontSize: 13, fontWeight: '600', color: Colors.textGray },
-  ieCardAmount: { fontSize: 17, fontWeight: '800' },
-  ieCardSub: { marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: Colors.divider, gap: 4 },
-  ieSubItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  ieSubDot: { width: 6, height: 6, borderRadius: 3 },
-  ieSubLabel: { fontSize: 11, color: Colors.textGray },
-  ieSubValue: { fontSize: 11, fontWeight: '600', color: Colors.textDark },
+  // 대시보드 (플로팅)
+  dashboardContainer: { paddingHorizontal: 16, marginTop: -36 },
+
+  // 수입/지출 통합 카드
+  summaryRow: { backgroundColor: Colors.surface, borderRadius: 20, padding: 20, flexDirection: 'row', alignItems: 'flex-start', marginBottom: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.12, shadowRadius: 16, elevation: 6 },
+  summaryCard: { flex: 1, alignItems: 'center' },
+  summaryIconWrap: { width: 36, height: 36, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginBottom: 8 },
+  summaryCardLabel: { fontSize: 12, fontWeight: '600', color: Colors.textGray, marginBottom: 4 },
+  summaryCardAmount: { fontSize: 18, fontWeight: '800' },
+  summaryDivider: { width: 1, height: '100%', backgroundColor: Colors.divider, marginHorizontal: 4 },
+  fundBreakdown: { marginTop: 8, gap: 2, alignItems: 'flex-start' },
+  fundBreakdownItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  fundDot: { width: 6, height: 6, borderRadius: 3 },
+  fundBreakdownText: { fontSize: 10, color: Colors.textGray },
 
   // 내 용돈
-  myAllowanceCard: { backgroundColor: Colors.surface, borderRadius: 16, padding: 16, marginBottom: 10, borderWidth: 1, borderColor: Colors.border, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 6, elevation: 2 },
+  myAllowanceCard: { backgroundColor: Colors.surface, borderRadius: 16, padding: 16, marginBottom: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 10, elevation: 3 },
   myAllowanceHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   myAllowanceLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   myAllowanceTitle: { fontSize: 14, fontWeight: '700', color: Colors.textBlack },
