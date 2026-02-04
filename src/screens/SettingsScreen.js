@@ -36,6 +36,7 @@ export default function SettingsScreen() {
   const [fixedName, setFixedName] = useState('');
   const [fixedAmount, setFixedAmount] = useState('');
   const [fixedDay, setFixedDay] = useState('');
+  const [fixedType, setFixedType] = useState('expense'); // 'expense' or 'income'
   const [showNameModal, setShowNameModal] = useState(false);
   const [newName, setNewName] = useState('');
   const [showAllowanceModal, setShowAllowanceModal] = useState(false);
@@ -107,9 +108,10 @@ export default function SettingsScreen() {
     const day = parseInt(fixedDay);
     if (day < 1 || day > 31) { showAlert('알림', '1~31 사이 입력!'); return; }
     await addDoc(collection(db, 'wallets', currentWalletId, 'fixedExpenses'), {
-      name: fixedName, amount: parseInt(fixedAmount), day, lastRecordedMonth: '', createdAt: new Date().toISOString(),
+      name: fixedName, amount: parseInt(fixedAmount), day, type: fixedType,
+      lastRecordedMonth: '', createdAt: new Date().toISOString(),
     });
-    setFixedName(''); setFixedAmount(''); setFixedDay(''); setShowFixedModal(false);
+    setFixedName(''); setFixedAmount(''); setFixedDay(''); setFixedType('expense'); setShowFixedModal(false);
   };
 
   const handleDeleteFixed = (id, name) => {
@@ -395,23 +397,35 @@ export default function SettingsScreen() {
             </View>
           )}
 
-          {/* 고정 지출 (관리자) */}
+          {/* 고정 지출/수입 (관리자) */}
           {isAdmin && (
             <View style={styles.card}>
               <View style={styles.sectionHeader}>
                 <Ionicons name="repeat-outline" size={22} color={Colors.primary} />
-                <Text style={styles.sectionTitle}>고정 지출</Text>
+                <Text style={styles.sectionTitle}>고정 지출/수입</Text>
                 <TouchableOpacity style={styles.addBtn} onPress={() => setShowFixedModal(true)}><Ionicons name="add" size={20} color="#FFF" /></TouchableOpacity>
               </View>
-              {fixedExpenses.length === 0 ? <Text style={styles.emptyText}>등록된 고정 지출이 없어요</Text> : (
-                fixedExpenses.map((item) => (
-                  <View key={item.id} style={styles.fixedRow}>
-                    <View style={styles.fixedDayBadge}><Text style={styles.fixedDayText}>{item.day}일</Text></View>
-                    <View style={{ flex: 1 }}><Text style={styles.fixedName}>{item.name}</Text></View>
-                    <Text style={styles.fixedAmt}>{formatMoney(item.amount)}</Text>
-                    <TouchableOpacity onPress={() => handleDeleteFixed(item.id, item.name)}><Ionicons name="trash-outline" size={18} color={Colors.expense} /></TouchableOpacity>
-                  </View>
-                ))
+              {fixedExpenses.length === 0 ? <Text style={styles.emptyText}>등록된 고정 내역이 없어요</Text> : (
+                fixedExpenses.map((item) => {
+                  const isIncome = item.type === 'income';
+                  return (
+                    <View key={item.id} style={styles.fixedRow}>
+                      <View style={[styles.fixedDayBadge, isIncome && { backgroundColor: Colors.income + '15' }]}>
+                        <Text style={[styles.fixedDayText, isIncome && { color: Colors.income }]}>{item.day}일</Text>
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.fixedName}>{item.name}</Text>
+                        <Text style={{ fontSize: 10, color: isIncome ? Colors.income : Colors.textGray, marginTop: 1 }}>
+                          {isIncome ? '수입' : '지출'}
+                        </Text>
+                      </View>
+                      <Text style={[styles.fixedAmt, { color: isIncome ? Colors.income : Colors.textBlack }]}>
+                        {isIncome ? '+' : ''}{formatMoney(item.amount)}
+                      </Text>
+                      <TouchableOpacity onPress={() => handleDeleteFixed(item.id, item.name)}><Ionicons name="trash-outline" size={18} color={Colors.expense} /></TouchableOpacity>
+                    </View>
+                  );
+                })
               )}
             </View>
           )}
@@ -455,15 +469,31 @@ export default function SettingsScreen() {
         </View></View>
       </Modal>
 
-      {/* 고정지출 모달 */}
+      {/* 고정 지출/수입 모달 */}
       <Modal visible={showFixedModal} transparent animationType="slide">
         <View style={styles.modalOverlay}><View style={styles.modalContent}>
-          <Text style={styles.modalTitle}>고정 지출 추가</Text>
+          <Text style={styles.modalTitle}>고정 내역 추가</Text>
+          <View style={styles.fixedToggleRow}>
+            <TouchableOpacity
+              style={[styles.fixedToggleBtn, fixedType === 'expense' && { backgroundColor: Colors.expense + '15', borderColor: Colors.expense }]}
+              onPress={() => setFixedType('expense')}
+            >
+              <Ionicons name="arrow-up-circle" size={16} color={fixedType === 'expense' ? Colors.expense : Colors.textGray} />
+              <Text style={[styles.fixedToggleText, fixedType === 'expense' && { color: Colors.expense }]}>지출</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.fixedToggleBtn, fixedType === 'income' && { backgroundColor: Colors.income + '15', borderColor: Colors.income }]}
+              onPress={() => setFixedType('income')}
+            >
+              <Ionicons name="arrow-down-circle" size={16} color={fixedType === 'income' ? Colors.income : Colors.textGray} />
+              <Text style={[styles.fixedToggleText, fixedType === 'income' && { color: Colors.income }]}>수입</Text>
+            </TouchableOpacity>
+          </View>
           <TextInput style={styles.modalInput} placeholder="항목명" placeholderTextColor={Colors.textLight} value={fixedName} onChangeText={setFixedName} />
           <TextInput style={styles.modalInput} placeholder="금액" placeholderTextColor={Colors.textLight} keyboardType="numeric" value={fixedAmount} onChangeText={(t) => setFixedAmount(t.replace(/[^0-9]/g, ''))} />
           <View style={styles.dayRow}><Text style={styles.dayLabel}>매월</Text><TextInput style={styles.dayInput} placeholder="5" placeholderTextColor={Colors.textLight} keyboardType="numeric" maxLength={2} value={fixedDay} onChangeText={(t) => setFixedDay(t.replace(/[^0-9]/g, ''))} /><Text style={styles.dayLabel}>일</Text></View>
           <View style={styles.modalBtns}>
-            <TouchableOpacity style={styles.modalCancelBtn} onPress={() => { setShowFixedModal(false); setFixedName(''); setFixedAmount(''); setFixedDay(''); }}><Text style={styles.modalCancelText}>취소</Text></TouchableOpacity>
+            <TouchableOpacity style={styles.modalCancelBtn} onPress={() => { setShowFixedModal(false); setFixedName(''); setFixedAmount(''); setFixedDay(''); setFixedType('expense'); }}><Text style={styles.modalCancelText}>취소</Text></TouchableOpacity>
             <TouchableOpacity style={styles.modalSaveBtn} onPress={handleAddFixed}><Text style={styles.modalSaveText}>추가</Text></TouchableOpacity>
           </View>
         </View></View>
@@ -564,4 +594,8 @@ const getStyles = (Colors) => StyleSheet.create({
   modalCancelText: { fontSize: 15, fontWeight: '600', color: Colors.textGray },
   modalSaveBtn: { flex: 1, backgroundColor: Colors.primary, borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
   modalSaveText: { fontSize: 15, fontWeight: 'bold', color: '#FFF' },
+  // 고정 지출/수입 토글
+  fixedToggleRow: { flexDirection: 'row', gap: 10, marginBottom: 16 },
+  fixedToggleBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 12, backgroundColor: Colors.background, borderWidth: 1.5, borderColor: Colors.border },
+  fixedToggleText: { fontSize: 14, fontWeight: '600', color: Colors.textGray },
 });

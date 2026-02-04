@@ -12,13 +12,21 @@ import { EXPENSE_CATEGORIES, INCOME_CATEGORIES } from '../constants/categories';
 import { db } from '../firebase/firebaseConfig';
 import { collection, addDoc } from 'firebase/firestore';
 
-const FIXED_PRESETS = [
+const FIXED_EXPENSE_PRESETS = [
   { name: '월세', icon: 'home-outline' },
   { name: '통신비', icon: 'phone-portrait-outline' },
   { name: '보험료', icon: 'shield-checkmark-outline' },
   { name: '구독료', icon: 'tv-outline' },
   { name: '교육비', icon: 'school-outline' },
   { name: '관리비', icon: 'business-outline' },
+];
+
+const FIXED_INCOME_PRESETS = [
+  { name: '월급', icon: 'cash-outline' },
+  { name: '임대수익', icon: 'home-outline' },
+  { name: '이자', icon: 'trending-up-outline' },
+  { name: '연금', icon: 'shield-checkmark-outline' },
+  { name: '부수입', icon: 'wallet-outline' },
 ];
 
 const showAlert = (title, message) => {
@@ -38,9 +46,10 @@ export default function AddScreen() {
   const [memo, setMemo] = useState('');
   const [fundType, setFundType] = useState('shared');
 
-  // 고정지출용
+  // 고정 지출/수입용
   const [fixedName, setFixedName] = useState('');
   const [fixedDay, setFixedDay] = useState('');
+  const [fixedType, setFixedType] = useState('expense'); // 'expense' or 'income'
 
   useEffect(() => { setSelectedCategory(null); }, [type]);
 
@@ -92,12 +101,14 @@ export default function AddScreen() {
     const day = parseInt(fixedDay);
     if (day < 1 || day > 31) { showAlert('알림', '1~31 사이 날짜를 입력해 주세요!'); return; }
     if (!currentWalletId) { showAlert('알림', '가계부가 선택되지 않았습니다.'); return; }
+    const label = fixedType === 'income' ? '수입' : '지출';
     try {
       await addDoc(collection(db, 'wallets', currentWalletId, 'fixedExpenses'), {
-        name: fixedName.trim(), amount: parseInt(amount), day, lastRecordedMonth: '', createdAt: new Date().toISOString(),
+        name: fixedName.trim(), amount: parseInt(amount), day, type: fixedType,
+        lastRecordedMonth: '', createdAt: new Date().toISOString(),
       });
-      showAlert('등록 완료! ✅', `고정 지출 "${fixedName.trim()}"이 등록되었습니다.\n매월 ${day}일에 자동 기록됩니다.`);
-      setAmount(''); setFixedName(''); setFixedDay('');
+      showAlert('등록 완료! ✅', `고정 ${label} "${fixedName.trim()}"이 등록되었습니다.\n매월 ${day}일에 자동 기록됩니다.`);
+      setAmount(''); setFixedName(''); setFixedDay(''); setFixedType('expense');
     } catch (error) {
       console.error('저장 실패:', error);
       showAlert('오류', '저장에 실패했습니다.');
@@ -141,35 +152,56 @@ export default function AddScreen() {
                   onPress={() => setType('fixed')}
                 >
                   <Ionicons name="calendar" size={20} color={type === 'fixed' ? '#FFFFFF' : Colors.primary} />
-                  <Text style={[styles.typeButtonText, type === 'fixed' && { color: '#FFFFFF' }]}>고정지출</Text>
+                  <Text style={[styles.typeButtonText, type === 'fixed' && { color: '#FFFFFF' }]}>고정</Text>
                 </TouchableOpacity>
               )}
             </View>
 
             {type === 'fixed' ? (
-              /* ===== 고정지출 등록 폼 ===== */
+              /* ===== 고정 지출/수입 등록 폼 ===== */
               <>
+                {/* 지출/수입 서브 토글 */}
+                <View style={styles.fixedSubToggle}>
+                  <TouchableOpacity
+                    style={[styles.fixedSubBtn, fixedType === 'expense' && styles.fixedSubBtnActiveExpense]}
+                    onPress={() => { setFixedType('expense'); setFixedName(''); }}
+                  >
+                    <Ionicons name="arrow-up-circle" size={18} color={fixedType === 'expense' ? Colors.expense : Colors.textGray} />
+                    <Text style={[styles.fixedSubBtnText, fixedType === 'expense' && { color: Colors.expense }]}>고정 지출</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.fixedSubBtn, fixedType === 'income' && styles.fixedSubBtnActiveIncome]}
+                    onPress={() => { setFixedType('income'); setFixedName(''); }}
+                  >
+                    <Ionicons name="arrow-down-circle" size={18} color={fixedType === 'income' ? Colors.income : Colors.textGray} />
+                    <Text style={[styles.fixedSubBtnText, fixedType === 'income' && { color: Colors.income }]}>고정 수입</Text>
+                  </TouchableOpacity>
+                </View>
+
                 {/* 항목명 */}
                 <View style={styles.inputCard}>
                   <Text style={styles.inputLabel}>항목명</Text>
                   <TextInput
                     style={styles.fixedNameInput}
-                    placeholder="예: 월세, 통신비, 보험료"
+                    placeholder={fixedType === 'expense' ? '예: 월세, 통신비, 보험료' : '예: 월급, 임대수익, 이자'}
                     placeholderTextColor={Colors.textLight}
                     value={fixedName}
                     onChangeText={setFixedName}
                   />
                   <View style={styles.fixedPresets}>
-                    {FIXED_PRESETS.map((preset) => (
-                      <TouchableOpacity
-                        key={preset.name}
-                        style={[styles.fixedPresetChip, fixedName === preset.name && { backgroundColor: Colors.primary + '20', borderColor: Colors.primary }]}
-                        onPress={() => setFixedName(preset.name)}
-                      >
-                        <Ionicons name={preset.icon} size={14} color={fixedName === preset.name ? Colors.primary : Colors.textGray} />
-                        <Text style={[styles.fixedPresetText, fixedName === preset.name && { color: Colors.primary }]}>{preset.name}</Text>
-                      </TouchableOpacity>
-                    ))}
+                    {(fixedType === 'expense' ? FIXED_EXPENSE_PRESETS : FIXED_INCOME_PRESETS).map((preset) => {
+                      const activeColor = fixedType === 'expense' ? Colors.expense : Colors.income;
+                      return (
+                        <TouchableOpacity
+                          key={preset.name}
+                          style={[styles.fixedPresetChip, fixedName === preset.name && { backgroundColor: activeColor + '20', borderColor: activeColor }]}
+                          onPress={() => setFixedName(preset.name)}
+                        >
+                          <Ionicons name={preset.icon} size={14} color={fixedName === preset.name ? activeColor : Colors.textGray} />
+                          <Text style={[styles.fixedPresetText, fixedName === preset.name && { color: activeColor }]}>{preset.name}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
                   </View>
                 </View>
 
@@ -182,8 +214,10 @@ export default function AddScreen() {
                   </View>
                   {amount ? (
                     <View style={styles.amountPreviewRow}>
-                      <View style={[styles.amountPreviewDot, { backgroundColor: Colors.primary }]} />
-                      <Text style={[styles.amountPreview, { color: Colors.primary }]}>매월 {parseInt(amount).toLocaleString('ko-KR')}원</Text>
+                      <View style={[styles.amountPreviewDot, { backgroundColor: fixedType === 'income' ? Colors.income : Colors.expense }]} />
+                      <Text style={[styles.amountPreview, { color: fixedType === 'income' ? Colors.income : Colors.expense }]}>
+                        매월 {fixedType === 'income' ? '+' : '-'}{parseInt(amount).toLocaleString('ko-KR')}원
+                      </Text>
                     </View>
                   ) : null}
                 </View>
@@ -206,18 +240,20 @@ export default function AddScreen() {
                   </View>
                   <View style={styles.fixedDayHint}>
                     <Ionicons name="information-circle-outline" size={14} color={Colors.textGray} />
-                    <Text style={styles.fixedDayHintText}>해당 날짜에 공금 지출(주거 카테고리)로 자동 기록됩니다</Text>
+                    <Text style={styles.fixedDayHintText}>
+                      해당 날짜에 {fixedType === 'income' ? '수입(급여 카테고리)' : '공금 지출(주거 카테고리)'}로 자동 기록됩니다
+                    </Text>
                   </View>
                 </View>
 
                 {/* 저장 */}
                 <TouchableOpacity style={styles.saveButton} onPress={handleSaveFixed} activeOpacity={0.85}>
                   <LinearGradient
-                    colors={[Colors.primary, Colors.gradientEnd]}
+                    colors={fixedType === 'income' ? [Colors.income, '#1FA870'] : [Colors.primary, Colors.gradientEnd]}
                     style={styles.saveGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
                   >
                     <Ionicons name="calendar" size={22} color="#FFFFFF" />
-                    <Text style={styles.saveText}>고정 지출 등록하기</Text>
+                    <Text style={styles.saveText}>고정 {fixedType === 'income' ? '수입' : '지출'} 등록하기</Text>
                   </LinearGradient>
                 </TouchableOpacity>
               </>
@@ -414,7 +450,12 @@ const getStyles = (Colors) => StyleSheet.create({
   saveButton: { marginTop: 6, borderRadius: 16, overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 12, elevation: 4 },
   saveGradient: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 18, gap: 8 },
   saveText: { fontSize: 17, fontWeight: '800', color: '#FFFFFF' },
-  // 고정지출 폼
+  // 고정 지출/수입 폼
+  fixedSubToggle: { flexDirection: 'row', gap: 10, marginBottom: 14 },
+  fixedSubBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 12, borderRadius: 14, backgroundColor: Colors.background, borderWidth: 1.5, borderColor: 'transparent' },
+  fixedSubBtnText: { fontSize: 14, fontWeight: '700', color: Colors.textGray },
+  fixedSubBtnActiveExpense: { backgroundColor: Colors.expense + '12', borderColor: Colors.expense + '40' },
+  fixedSubBtnActiveIncome: { backgroundColor: Colors.income + '12', borderColor: Colors.income + '40' },
   fixedNameInput: { fontSize: 18, fontWeight: '700', color: Colors.textBlack, padding: 0, marginBottom: 14 },
   fixedPresets: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   fixedPresetChip: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, backgroundColor: Colors.background, borderWidth: 1.5, borderColor: Colors.border },
