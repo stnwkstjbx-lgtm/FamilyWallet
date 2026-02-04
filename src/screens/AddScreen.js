@@ -55,7 +55,8 @@ export default function AddScreen() {
 
   useEffect(() => { setSelectedCategory(null); }, [type]);
 
-  const currentCategories = type === 'expense' ? EXPENSE_CATEGORIES : INCOME_CATEGORIES;
+  const customCats = (currentWallet?.customCategories || []).map(c => ({ id: c.id, name: c.name, icon: c.icon }));
+  const currentCategories = type === 'expense' ? [...EXPENSE_CATEGORIES, ...customCats] : INCOME_CATEGORIES;
   const myWalletName = currentWallet?.members?.[user?.uid]?.name || userProfile?.name || user?.displayName || '미지정';
   const myAllowance = currentWallet?.members?.[user?.uid]?.allowance || 0;
 

@@ -8,8 +8,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../constants/ThemeContext';
 import { useAuth } from '../constants/AuthContext';
 import { useWallet } from '../constants/WalletContext';
-import { FUND_TYPES, FUND_TYPE_MAP } from '../constants/categories';
+import { FUND_TYPES, FUND_TYPE_MAP, ASSET_FUND_TYPES } from '../constants/categories';
 import { formatAmountInput, parseAmount, validateAmount } from '../utils/format';
+import { transactionsToCSV, monthlySummaryCSV, shareCSV } from '../utils/exportCSV';
 import { db } from '../firebase/firebaseConfig';
 import {
   collection, onSnapshot, addDoc, deleteDoc, doc, updateDoc, query,
@@ -30,11 +31,19 @@ export default function SettingsScreen() {
   const {
     currentWalletId, currentWallet, isAdmin, userWallets, maxWallets,
     switchWallet, leaveWallet, regenerateInviteCode, getInviteLink, getInviteMessage, goToWalletList, toggleAdmin,
-    setSharedBudget,
+    setSharedBudget, transactions: walletTransactions, accumulatedFunds,
   } = useWallet();
   const styles = getStyles(Colors);
 
   const [fixedExpenses, setFixedExpenses] = useState([]);
+  // 자산 목표
+  const [showGoalModal, setShowGoalModal] = useState(false);
+  const [goalType, setGoalType] = useState('savings');
+  const [goalAmount, setGoalAmount] = useState('');
+  // 커스텀 카테고리
+  const [showCategoryModal, setShowCategoryModal] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [newCategoryIcon, setNewCategoryIcon] = useState('pricetag-outline');
   const [showFixedModal, setShowFixedModal] = useState(false);
   const [fixedName, setFixedName] = useState('');
   const [fixedAmount, setFixedAmount] = useState('');
@@ -285,6 +294,63 @@ export default function SettingsScreen() {
     } else {
       showAlert('오류', result.message);
     }
+  };
+
+  // ★ CSV 내보내기
+  const handleExportCSV = async (type) => {
+    const walletName = currentWallet?.name || '가계부';
+    const now = new Date();
+    const dateStr = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
+    if (type === 'detail') {
+      const csv = transactionsToCSV(walletTransactions, walletName, customCategories);
+      const result = await shareCSV(csv, `${walletName}_거래내역_${dateStr}.csv`);
+      if (result.success) showAlert('내보내기 완료', '거래 내역이 공유되었습니다.');
+    } else {
+      const csv = monthlySummaryCSV(walletTransactions, walletName);
+      const result = await shareCSV(csv, `${walletName}_월별요약_${dateStr}.csv`);
+      if (result.success) showAlert('내보내기 완료', '월별 요약이 공유되었습니다.');
+    }
+  };
+
+  // ★ 자산 목표 설정
+  const fundGoals = currentWallet?.fundGoals || {};
+  const handleSaveGoal = async () => {
+    const amt = parseAmount(goalAmount);
+    if (amt <= 0) { showAlert('알림', '목표 금액을 입력해 주세요.'); return; }
+    await updateDoc(doc(db, 'wallets', currentWalletId), {
+      [`fundGoals.${goalType}`]: amt,
+    });
+    showAlert('설정 완료', `${FUND_TYPE_MAP[goalType]?.name || goalType} 목표: ${amt.toLocaleString('ko-KR')}원`);
+    setShowGoalModal(false); setGoalAmount('');
+  };
+  const handleClearGoal = async (type) => {
+    await updateDoc(doc(db, 'wallets', currentWalletId), {
+      [`fundGoals.${type}`]: 0,
+    });
+  };
+
+  // ★ 커스텀 카테고리 관리
+  const customCategories = currentWallet?.customCategories || [];
+  const ICON_OPTIONS = ['pricetag-outline','cart-outline','car-outline','gift-outline','leaf-outline','paw-outline','fitness-outline','musical-notes-outline','airplane-outline','build-outline','camera-outline','color-palette-outline'];
+  const handleAddCategory = async () => {
+    if (!newCategoryName.trim()) { showAlert('알림', '카테고리 이름을 입력해 주세요.'); return; }
+    const id = `custom_${Date.now()}`;
+    const newCat = { id, name: newCategoryName.trim(), icon: newCategoryIcon };
+    await updateDoc(doc(db, 'wallets', currentWalletId), {
+      customCategories: [...customCategories, newCat],
+    });
+    setNewCategoryName(''); setNewCategoryIcon('pricetag-outline'); setShowCategoryModal(false);
+    showAlert('추가 완료', `"${newCat.name}" 카테고리가 추가되었습니다.`);
+  };
+  const handleDeleteCategory = (catId, catName) => {
+    showAlert('삭제', `"${catName}" 카테고리를 삭제할까요?`, [
+      { text: '취소' },
+      { text: '삭제', onPress: async () => {
+        await updateDoc(doc(db, 'wallets', currentWalletId), {
+          customCategories: customCategories.filter(c => c.id !== catId),
+        });
+      }},
+    ]);
   };
 
   const formatMoney = (n) => n.toLocaleString('ko-KR') + '원';
@@ -562,6 +628,99 @@ export default function SettingsScreen() {
             </View>
           )}
 
+          {/* ===== 자산 목표 설정 (관리자) ===== */}
+          {isAdmin && (
+            <View style={styles.card}>
+              <View style={styles.sectionHeader}>
+                <Ionicons name="flag" size={22} color={Colors.primary} />
+                <Text style={styles.sectionTitle}>자산 목표</Text>
+                <TouchableOpacity style={styles.addBtn} onPress={() => { setGoalType('savings'); setGoalAmount(''); setShowGoalModal(true); }}><Ionicons name="add" size={20} color="#FFF" /></TouchableOpacity>
+              </View>
+              {ASSET_FUND_TYPES.map((ft) => {
+                const goal = fundGoals[ft] || 0;
+                const current = accumulatedFunds?.[ft] || 0;
+                const ftInfo = FUND_TYPE_MAP[ft];
+                if (goal <= 0 && current <= 0) return null;
+                const pct = goal > 0 ? Math.min(Math.round((current / goal) * 100), 100) : 0;
+                return (
+                  <View key={ft} style={styles.goalRow}>
+                    <View style={styles.goalTop}>
+                      <View style={[styles.goalIcon, { backgroundColor: ftInfo.color + '15' }]}>
+                        <Ionicons name={ftInfo.icon} size={16} color={ftInfo.color} />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.goalName}>{ftInfo.name}</Text>
+                        <Text style={styles.goalSub}>{formatMoney(current)}{goal > 0 ? ` / ${formatMoney(goal)}` : ''}</Text>
+                      </View>
+                      {goal > 0 && <Text style={[styles.goalPct, { color: pct >= 100 ? Colors.income : ftInfo.color }]}>{pct}%</Text>}
+                      <TouchableOpacity onPress={() => { setGoalType(ft); setGoalAmount(goal > 0 ? goal.toLocaleString('ko-KR') : ''); setShowGoalModal(true); }}>
+                        <Ionicons name="create-outline" size={16} color={Colors.textGray} />
+                      </TouchableOpacity>
+                    </View>
+                    {goal > 0 && (
+                      <View style={styles.goalBar}>
+                        <View style={[styles.goalBarFill, { width: `${pct}%`, backgroundColor: pct >= 100 ? Colors.income : ftInfo.color }]} />
+                      </View>
+                    )}
+                  </View>
+                );
+              })}
+              {ASSET_FUND_TYPES.every(ft => (fundGoals[ft] || 0) <= 0 && (accumulatedFunds?.[ft] || 0) <= 0) && (
+                <Text style={styles.emptyText}>목표를 설정하여 자산을 관리하세요</Text>
+              )}
+            </View>
+          )}
+
+          {/* ===== 커스텀 카테고리 (관리자) ===== */}
+          {isAdmin && (
+            <View style={styles.card}>
+              <View style={styles.sectionHeader}>
+                <Ionicons name="pricetags" size={22} color={Colors.primary} />
+                <Text style={styles.sectionTitle}>커스텀 카테고리</Text>
+                <TouchableOpacity style={styles.addBtn} onPress={() => setShowCategoryModal(true)}><Ionicons name="add" size={20} color="#FFF" /></TouchableOpacity>
+              </View>
+              {customCategories.length === 0 ? (
+                <Text style={styles.emptyText}>기본 카테고리 외 추가 카테고리를 만들 수 있어요</Text>
+              ) : (
+                <View style={styles.customCatGrid}>
+                  {customCategories.map((cat) => (
+                    <View key={cat.id} style={styles.customCatChip}>
+                      <Ionicons name={cat.icon} size={14} color={Colors.primary} />
+                      <Text style={styles.customCatText}>{cat.name}</Text>
+                      <TouchableOpacity onPress={() => handleDeleteCategory(cat.id, cat.name)}>
+                        <Ionicons name="close-circle" size={14} color={Colors.textLight} />
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                </View>
+              )}
+            </View>
+          )}
+
+          {/* ===== 데이터 내보내기 ===== */}
+          <View style={styles.card}>
+            <View style={styles.sectionHeader}>
+              <Ionicons name="download-outline" size={22} color={Colors.primary} />
+              <Text style={styles.sectionTitle}>데이터 내보내기</Text>
+            </View>
+            <TouchableOpacity style={styles.exportBtn} onPress={() => handleExportCSV('detail')}>
+              <Ionicons name="document-text-outline" size={18} color={Colors.primary} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.exportBtnTitle}>거래 내역 (CSV)</Text>
+                <Text style={styles.exportBtnSub}>모든 수입/지출 기록을 내보냅니다</Text>
+              </View>
+              <Ionicons name="share-outline" size={18} color={Colors.textGray} />
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.exportBtn} onPress={() => handleExportCSV('summary')}>
+              <Ionicons name="bar-chart-outline" size={18} color={Colors.primary} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.exportBtnTitle}>월별 요약 (CSV)</Text>
+                <Text style={styles.exportBtnSub}>월별 수입/지출 요약을 내보냅니다</Text>
+              </View>
+              <Ionicons name="share-outline" size={18} color={Colors.textGray} />
+            </TouchableOpacity>
+          </View>
+
           {/* ===== 가계부 나가기 ===== */}
           <TouchableOpacity style={styles.leaveBtn} onPress={handleLeaveWallet}>
             <Ionicons name="exit-outline" size={18} color={Colors.expense} />
@@ -684,6 +843,66 @@ export default function SettingsScreen() {
                 ? <ActivityIndicator color="#FFF" size="small" />
                 : <Text style={styles.modalSaveText}>삭제</Text>
               }
+            </TouchableOpacity>
+          </View>
+        </View></View>
+      </Modal>
+
+      {/* 자산 목표 설정 모달 */}
+      <Modal visible={showGoalModal} transparent animationType="slide">
+        <View style={styles.modalOverlay}><View style={styles.modalContent}>
+          <Text style={styles.modalTitle}>자산 목표 설정</Text>
+          <View style={styles.fixedFundTypeRow}>
+            {ASSET_FUND_TYPES.map((ft) => {
+              const info = FUND_TYPE_MAP[ft];
+              return (
+                <TouchableOpacity
+                  key={ft}
+                  style={[styles.fixedFundChip, goalType === ft && { backgroundColor: info.color + '18', borderColor: info.color }]}
+                  onPress={() => setGoalType(ft)}
+                >
+                  <Ionicons name={info.icon} size={12} color={goalType === ft ? info.color : Colors.textGray} />
+                  <Text style={[styles.fixedFundChipText, goalType === ft && { color: info.color }]}>{info.name}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+          <TextInput style={styles.modalInput} placeholder="목표 금액" placeholderTextColor={Colors.textLight} keyboardType="numeric" value={goalAmount} onChangeText={(t) => setGoalAmount(formatAmountInput(t))} />
+          {goalAmount ? <Text style={styles.preview}>{parseAmount(goalAmount).toLocaleString('ko-KR')}원</Text> : null}
+          <View style={styles.modalBtns}>
+            <TouchableOpacity style={styles.modalCancelBtn} onPress={() => { setShowGoalModal(false); setGoalAmount(''); }}>
+              <Text style={styles.modalCancelText}>취소</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.modalSaveBtn} onPress={handleSaveGoal}>
+              <Text style={styles.modalSaveText}>설정</Text>
+            </TouchableOpacity>
+          </View>
+        </View></View>
+      </Modal>
+
+      {/* 커스텀 카테고리 추가 모달 */}
+      <Modal visible={showCategoryModal} transparent animationType="slide">
+        <View style={styles.modalOverlay}><View style={styles.modalContent}>
+          <Text style={styles.modalTitle}>카테고리 추가</Text>
+          <TextInput style={styles.modalInput} placeholder="카테고리 이름" placeholderTextColor={Colors.textLight} value={newCategoryName} onChangeText={setNewCategoryName} maxLength={10} />
+          <Text style={{ fontSize: 13, color: Colors.textGray, marginBottom: 8 }}>아이콘 선택</Text>
+          <View style={styles.iconGrid}>
+            {ICON_OPTIONS.map((icon) => (
+              <TouchableOpacity
+                key={icon}
+                style={[styles.iconOption, newCategoryIcon === icon && { backgroundColor: Colors.primary + '20', borderColor: Colors.primary }]}
+                onPress={() => setNewCategoryIcon(icon)}
+              >
+                <Ionicons name={icon} size={20} color={newCategoryIcon === icon ? Colors.primary : Colors.textGray} />
+              </TouchableOpacity>
+            ))}
+          </View>
+          <View style={styles.modalBtns}>
+            <TouchableOpacity style={styles.modalCancelBtn} onPress={() => { setShowCategoryModal(false); setNewCategoryName(''); }}>
+              <Text style={styles.modalCancelText}>취소</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.modalSaveBtn} onPress={handleAddCategory}>
+              <Text style={styles.modalSaveText}>추가</Text>
             </TouchableOpacity>
           </View>
         </View></View>
@@ -845,4 +1064,27 @@ const getStyles = (Colors) => StyleSheet.create({
   deleteAccountText: { fontSize: 13, color: Colors.textLight },
   deleteModalHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
   deleteWarning: { fontSize: 13, color: Colors.textGray, lineHeight: 20, marginBottom: 16, backgroundColor: Colors.expense + '08', padding: 12, borderRadius: 10 },
+  // 자산 목표
+  goalRow: { backgroundColor: Colors.background, borderRadius: 12, padding: 14, marginBottom: 10 },
+  goalTop: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  goalIcon: { width: 36, height: 36, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
+  goalName: { fontSize: 15, fontWeight: '600', color: Colors.textBlack },
+  goalSub: { fontSize: 12, color: Colors.textGray, marginTop: 2 },
+  goalPct: { fontSize: 16, fontWeight: '800', marginRight: 6 },
+  goalBar: { height: 6, backgroundColor: Colors.surface, borderRadius: 3, marginTop: 10, overflow: 'hidden' },
+  goalBarFill: { height: 6, borderRadius: 3 },
+  // 커스텀 카테고리
+  customCatGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  customCatChip: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: Colors.background, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8 },
+  customCatText: { fontSize: 13, fontWeight: '600', color: Colors.textBlack },
+  iconGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 },
+  iconOption: { width: 44, height: 44, borderRadius: 12, borderWidth: 1.5, borderColor: Colors.border, justifyContent: 'center', alignItems: 'center' },
+  // 데이터 내보내기
+  exportBtn: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: Colors.background, borderRadius: 12, padding: 14, marginBottom: 8 },
+  exportBtnTitle: { fontSize: 14, fontWeight: '600', color: Colors.textBlack },
+  exportBtnSub: { fontSize: 11, color: Colors.textGray, marginTop: 2 },
+  // 예산 모달 버튼
+  modalBtnCancel: { flex: 1, backgroundColor: Colors.background, borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
+  modalBtn: { flex: 1, borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
+  modalBtnText: { fontSize: 15, fontWeight: '600' },
 });

@@ -264,14 +264,14 @@ export default function HomeScreen() {
       if (searchText) {
         const search = searchText.toLowerCase();
         const memo = (t.memo || '').toLowerCase();
-        const catName = (ALL_CATEGORY_NAMES[t.category] || '').toLowerCase();
+        const catName = (allCatNames[t.category] || '').toLowerCase();
         const member = (t.member || '').toLowerCase();
         if (!memo.includes(search) && !catName.includes(search) && !member.includes(search)) return false;
       }
       
       return true;
     });
-  }, [transactions, filterType, filterFundType, filterCategory, searchText, user?.uid]);
+  }, [transactions, filterType, filterFundType, filterCategory, searchText, user?.uid, allCatNames]);
 
   const formatMoney = (num) => Math.abs(num).toLocaleString('ko-KR') + '원';
   const formatDate = (dateString) => {
@@ -284,7 +284,18 @@ export default function HomeScreen() {
   };
 
   const myWalletName = currentWallet?.members?.[user?.uid]?.name || userProfile?.name || '';
-  const quickCategories = quickType === 'expense' ? EXPENSE_CATEGORIES : INCOME_CATEGORIES;
+  const customCats = (currentWallet?.customCategories || []).map(c => ({ id: c.id, name: c.name, icon: c.icon }));
+  const allCatNames = useMemo(() => {
+    const map = { ...ALL_CATEGORY_NAMES };
+    customCats.forEach(c => { map[c.id] = c.name; });
+    return map;
+  }, [customCats]);
+  const allCatIcons = useMemo(() => {
+    const map = { ...ALL_CATEGORY_ICONS };
+    customCats.forEach(c => { map[c.id] = c.icon; });
+    return map;
+  }, [customCats]);
+  const quickCategories = quickType === 'expense' ? [...EXPENSE_CATEGORIES, ...customCats] : INCOME_CATEGORIES;
 
   // ★ 시간대별 인사말
   const greeting = useMemo(() => {
@@ -330,10 +341,10 @@ export default function HomeScreen() {
       catMap[cat] = (catMap[cat] || 0) + t.amount;
     });
     return Object.entries(catMap)
-      .map(([id, amount]) => ({ id, amount, name: ALL_CATEGORY_NAMES[id] || '기타', icon: ALL_CATEGORY_ICONS[id] || 'ellipsis-horizontal-outline' }))
+      .map(([id, amount]) => ({ id, amount, name: allCatNames[id] || '기타', icon: allCatIcons[id] || 'ellipsis-horizontal-outline' }))
       .sort((a, b) => b.amount - a.amount)
       .slice(0, 4);
-  }, [monthlyTx]);
+  }, [monthlyTx, allCatNames, allCatIcons]);
 
   const txCount = monthlyTx.length;
   const incomeRatio = totalIncome > 0 ? Math.round((totalExpense / totalIncome) * 100) : 0;
@@ -819,7 +830,7 @@ export default function HomeScreen() {
               )}
               {filterCategory !== 'all' && (
                 <View style={styles.filterChip}>
-                  <Text style={styles.filterChipText}>{ALL_CATEGORY_NAMES[filterCategory]}</Text>
+                  <Text style={styles.filterChipText}>{allCatNames[filterCategory]}</Text>
                   <TouchableOpacity onPress={() => setFilterCategory('all')}>
                     <Ionicons name="close" size={14} color={Colors.primary} />
                   </TouchableOpacity>
@@ -880,17 +891,17 @@ export default function HomeScreen() {
                   key={entry.key}
                   style={styles.txCard}
                   onPress={() => handleEdit(item)}
-                  onLongPress={() => handleDelete(item.id, item.memo || ALL_CATEGORY_NAMES[item.category] || '기타')}
+                  onLongPress={() => handleDelete(item.id, item.memo || allCatNames[item.category] || '기타')}
                   delayLongPress={500}
                   activeOpacity={0.7}
                 >
                   <View style={[styles.txIcon, { backgroundColor: (Colors.category[item.category] || Colors.primary) + '15' }]}>
-                    <Ionicons name={ALL_CATEGORY_ICONS[item.category] || 'ellipsis-horizontal-outline'} size={20} color={Colors.category[item.category] || Colors.primary} />
+                    <Ionicons name={allCatIcons[item.category] || 'ellipsis-horizontal-outline'} size={20} color={Colors.category[item.category] || Colors.primary} />
                   </View>
                   <View style={styles.txInfo}>
-                    <Text style={styles.txTitle} numberOfLines={1}>{item.memo || ALL_CATEGORY_NAMES[item.category] || '기타'}</Text>
+                    <Text style={styles.txTitle} numberOfLines={1}>{item.memo || allCatNames[item.category] || '기타'}</Text>
                     <View style={styles.txMeta}>
-                      <Text style={styles.txDate}>{item.member ? `${item.member} · ` : ''}{ALL_CATEGORY_NAMES[item.category] || '기타'}</Text>
+                      <Text style={styles.txDate}>{item.member ? `${item.member} · ` : ''}{allCatNames[item.category] || '기타'}</Text>
                       {item.type === 'expense' && ftInfo && (
                         <View style={[styles.txTag, { backgroundColor: ftInfo.color + '15' }]}>
                           <Text style={[styles.txTagText, { color: ftInfo.color }]}>
@@ -1168,13 +1179,13 @@ export default function HomeScreen() {
                 >
                   <Text style={[styles.categoryFilterText, filterCategory === 'all' && styles.categoryFilterTextActive]}>전체</Text>
                 </TouchableOpacity>
-                {EXPENSE_CATEGORIES.map((cat) => (
-                  <TouchableOpacity 
+                {[...EXPENSE_CATEGORIES, ...customCats].map((cat) => (
+                  <TouchableOpacity
                     key={cat.id}
                     style={[styles.categoryFilterItem, filterCategory === cat.id && styles.categoryFilterItemActive]}
                     onPress={() => setFilterCategory(cat.id)}
                   >
-                    <Ionicons name={cat.icon} size={16} color={filterCategory === cat.id ? '#fff' : Colors.category[cat.id]} />
+                    <Ionicons name={cat.icon} size={16} color={filterCategory === cat.id ? '#fff' : (Colors.category[cat.id] || Colors.primary)} />
                     <Text style={[styles.categoryFilterText, filterCategory === cat.id && styles.categoryFilterTextActive]}>{cat.name}</Text>
                   </TouchableOpacity>
                 ))}
@@ -1219,9 +1230,9 @@ export default function HomeScreen() {
             
             <Text style={styles.inputLabel}>카테고리</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryScroll}>
-              {EXPENSE_CATEGORIES.map((cat) => (
-                <TouchableOpacity key={cat.id} style={[styles.categoryChip, editCategory === cat.id && { backgroundColor: Colors.category[cat.id], borderColor: Colors.category[cat.id] }]} onPress={() => setEditCategory(cat.id)}>
-                  <Ionicons name={cat.icon} size={16} color={editCategory === cat.id ? '#fff' : Colors.category[cat.id]} />
+              {[...EXPENSE_CATEGORIES, ...customCats].map((cat) => (
+                <TouchableOpacity key={cat.id} style={[styles.categoryChip, editCategory === cat.id && { backgroundColor: Colors.category[cat.id] || Colors.primary, borderColor: Colors.category[cat.id] || Colors.primary }]} onPress={() => setEditCategory(cat.id)}>
+                  <Ionicons name={cat.icon} size={16} color={editCategory === cat.id ? '#fff' : (Colors.category[cat.id] || Colors.primary)} />
                   <Text style={[styles.categoryChipText, editCategory === cat.id && { color: '#fff' }]}>{cat.name}</Text>
                 </TouchableOpacity>
               ))}
