@@ -6,7 +6,7 @@ import { Calendar, LocaleConfig } from 'react-native-calendars';
 import { useTheme } from '../constants/ThemeContext';
 import { useAuth } from '../constants/AuthContext';
 import { useWallet } from '../constants/WalletContext';
-import { ALL_CATEGORY_NAMES, ALL_CATEGORY_ICONS } from '../constants/categories';
+import { ALL_CATEGORY_NAMES, ALL_CATEGORY_ICONS, FUND_TYPE_MAP } from '../constants/categories';
 import { db } from '../firebase/firebaseConfig';
 import { collection, onSnapshot, query } from 'firebase/firestore';
 
@@ -287,7 +287,7 @@ export default function CalendarScreen() {
                 <View style={styles.txList}>
                   <Text style={styles.txListTitle}>상세 내역</Text>
                   {selectedTx.map((item, index) => {
-                    const isPersonal = item.type === 'expense' && item.fundType === 'personal';
+                    const ftInfo = FUND_TYPE_MAP[item.fundType] || FUND_TYPE_MAP['shared'];
                     const catColor = Colors.category[item.category] || Colors.primary;
                     return (
                       <View key={item.id} style={[styles.txItem, index === selectedTx.length - 1 && { borderBottomWidth: 0 }]}>
@@ -297,10 +297,10 @@ export default function CalendarScreen() {
                         <View style={styles.txInfo}>
                           <View style={styles.txTitleRow}>
                             <Text style={styles.txTitle} numberOfLines={1}>{item.memo || ALL_CATEGORY_NAMES[item.category] || '기타'}</Text>
-                            {item.type === 'expense' && (
-                              <View style={[styles.fundTag, { backgroundColor: isPersonal ? Colors.income + '15' : Colors.primary + '12' }]}>
-                                <Ionicons name={isPersonal ? 'person' : 'people'} size={9} color={isPersonal ? Colors.income : Colors.primary} />
-                                <Text style={[styles.fundTagText, { color: isPersonal ? Colors.income : Colors.primary }]}>{isPersonal ? '용돈' : '공금'}</Text>
+                            {item.type === 'expense' && ftInfo && (
+                              <View style={[styles.fundTag, { backgroundColor: ftInfo.color + '15' }]}>
+                                <Ionicons name={ftInfo.icon} size={9} color={ftInfo.color} />
+                                <Text style={[styles.fundTagText, { color: ftInfo.color }]}>{ftInfo.name}</Text>
                               </View>
                             )}
                           </View>

@@ -24,6 +24,7 @@ import {
 import { db } from '../firebase/firebaseConfig';
 import { useAuth } from './AuthContext';
 import NotificationService from '../services/NotificationService';
+import { ASSET_FUND_TYPES } from './categories';
 
 const WalletContext = createContext();
 export const useWallet = () => useContext(WalletContext);
@@ -77,6 +78,36 @@ export function WalletProvider({ children }) {
     const pct = Math.min(Math.round((spent / budget) * 100), 999);
     return { budget, spent, remaining: budget - spent, pct };
   }, [currentWallet, rawTransactions]);
+
+  // ★ 누적 자산 통계 (예적금, 투자, 비상금 - 전체 기간)
+  const accumulatedFunds = useMemo(() => {
+    const result = { savings: 0, investment: 0, emergency: 0 };
+    rawTransactions.forEach((tx) => {
+      if (tx.type === 'expense' && ASSET_FUND_TYPES.includes(tx.fundType)) {
+        result[tx.fundType] += tx.amount || 0;
+      }
+    });
+    result.total = result.savings + result.investment + result.emergency;
+    return result;
+  }, [rawTransactions]);
+
+  // ★ 이번 달 fundType별 지출 내역 (대시보드용, rawTransactions 기반)
+  const monthlyFundBreakdown = useMemo(() => {
+    const now = new Date();
+    const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const result = { shared: 0, personal: 0, utility: 0, savings: 0, investment: 0, emergency: 0 };
+    rawTransactions.forEach((tx) => {
+      if (tx.type !== 'expense') return;
+      if (tx.fundType === 'allowance_allocation') return;
+      const txYm = tx.date?.slice(0, 7) || '';
+      if (txYm !== ym) return;
+      const ft = tx.fundType || 'shared';
+      if (result[ft] !== undefined) result[ft] += tx.amount || 0;
+    });
+    result.totalExpense = Object.values(result).reduce((s, v) => s + v, 0);
+    result.netExpense = result.shared + result.personal + result.utility; // 순지출 (자산이전 제외)
+    return result;
+  }, [rawTransactions]);
 
   // ★ 비관리자용: 다른 멤버의 용돈 정보 숨기기
   const sanitizedWallet = useMemo(() => {
@@ -717,6 +748,10 @@ export function WalletProvider({ children }) {
     // 공금 예산
     setSharedBudget,
     sharedBudgetInfo,
+
+    // ★ 자산 누적 & 월별 분류
+    accumulatedFunds,
+    monthlyFundBreakdown,
 
     // 트랜잭션
     addTransaction,

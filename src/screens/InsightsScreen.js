@@ -7,7 +7,7 @@ import { Calendar, LocaleConfig } from 'react-native-calendars';
 import { useTheme } from '../constants/ThemeContext';
 import { useAuth } from '../constants/AuthContext';
 import { useWallet } from '../constants/WalletContext';
-import { ALL_CATEGORY_NAMES, ALL_CATEGORY_ICONS } from '../constants/categories';
+import { ALL_CATEGORY_NAMES, ALL_CATEGORY_ICONS, FUND_TYPES, FUND_TYPE_MAP } from '../constants/categories';
 import { db } from '../firebase/firebaseConfig';
 import { collection, onSnapshot, query } from 'firebase/firestore';
 
@@ -101,8 +101,17 @@ export default function InsightsScreen() {
 
   const totalIncome = monthly.filter((t) => t.type === 'income').reduce((s, t) => s + (t.amount || 0), 0);
   const totalExpense = monthly.filter((t) => t.type === 'expense').reduce((s, t) => s + (t.amount || 0), 0);
-  const sharedExpense = monthly.filter((t) => t.type === 'expense' && (t.fundType || 'shared') === 'shared').reduce((s, t) => s + (t.amount || 0), 0);
-  const personalExpense = monthly.filter((t) => t.type === 'expense' && t.fundType === 'personal').reduce((s, t) => s + (t.amount || 0), 0);
+
+  // 6분류별 금액 집계
+  const fundBreakdown = useMemo(() => {
+    const result = {};
+    FUND_TYPES.forEach((ft) => { result[ft.id] = 0; });
+    monthly.filter((t) => t.type === 'expense' && t.fundType !== 'allowance_allocation').forEach((t) => {
+      const ft = t.fundType || 'shared';
+      if (result[ft] !== undefined) result[ft] += t.amount || 0;
+    });
+    return result;
+  }, [monthly]);
 
   const prevTotalIncome = prevMonthly.filter((t) => t.type === 'income').reduce((s, t) => s + (t.amount || 0), 0);
   const prevTotalExpense = prevMonthly.filter((t) => t.type === 'expense').reduce((s, t) => s + (t.amount || 0), 0);
@@ -113,11 +122,9 @@ export default function InsightsScreen() {
   // 지출 카테고리
   const expenseCatData = useMemo(() => {
     const catData = {};
-    monthly.filter((t) => t.type === 'expense').forEach((t) => {
-      if (!catData[t.category]) catData[t.category] = { total: 0, shared: 0, personal: 0 };
+    monthly.filter((t) => t.type === 'expense' && t.fundType !== 'allowance_allocation').forEach((t) => {
+      if (!catData[t.category]) catData[t.category] = { total: 0 };
       catData[t.category].total += t.amount || 0;
-      if (t.fundType === 'personal') catData[t.category].personal += t.amount || 0;
-      else catData[t.category].shared += t.amount || 0;
     });
     return Object.entries(catData).sort((a, b) => b[1].total - a[1].total);
   }, [monthly]);
@@ -156,9 +163,6 @@ export default function InsightsScreen() {
   const strokeWidth = 26;
   const radius = (chartSize - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
-
-  const sharedPct = totalExpense > 0 ? Math.round((sharedExpense / totalExpense) * 100) : 0;
-  const personalPct = totalExpense > 0 ? Math.round((personalExpense / totalExpense) * 100) : 0;
 
   // ═══════════════════════════════════
   // 캘린더 탭 데이터
@@ -276,31 +280,35 @@ export default function InsightsScreen() {
           </Text>
         </View>
 
-        {/* 공금 vs 용돈 */}
+        {/* 6분류 지출 출처 */}
         {totalExpense > 0 && (
           <View style={styles.fundCard}>
             <Text style={styles.sectionTitle}>지출 출처 비율</Text>
             <View style={styles.fundBarRow}>
-              <View style={[styles.fundBar, { flex: sharedPct || 1, backgroundColor: Colors.primary }]}>
-                {sharedPct >= 15 && <Text style={styles.fundBarText}>공금 {sharedPct}%</Text>}
-              </View>
-              <View style={[styles.fundBar, { flex: personalPct || 1, backgroundColor: Colors.personal }]}>
-                {personalPct >= 15 && <Text style={styles.fundBarText}>용돈 {personalPct}%</Text>}
-              </View>
+              {FUND_TYPES.map((ft) => {
+                const amt = fundBreakdown[ft.id] || 0;
+                const pct = totalExpense > 0 ? Math.round((amt / totalExpense) * 100) : 0;
+                if (pct === 0) return null;
+                return (
+                  <View key={ft.id} style={[styles.fundBar, { flex: pct, backgroundColor: ft.color }]}>
+                    {pct >= 15 && <Text style={styles.fundBarText}>{ft.name} {pct}%</Text>}
+                  </View>
+                );
+              })}
             </View>
             <View style={styles.fundLegendRow}>
-              <View style={styles.fundLegendItem}>
-                <View style={[styles.fundLegendDot, { backgroundColor: Colors.primary }]} />
-                <Ionicons name="people" size={12} color={Colors.primary} />
-                <Text style={styles.fundLegendLabel}>공금</Text>
-                <Text style={styles.fundLegendValue}>{formatMoney(sharedExpense)}</Text>
-              </View>
-              <View style={styles.fundLegendItem}>
-                <View style={[styles.fundLegendDot, { backgroundColor: Colors.personal }]} />
-                <Ionicons name="person" size={12} color={Colors.personal} />
-                <Text style={styles.fundLegendLabel}>용돈</Text>
-                <Text style={styles.fundLegendValue}>{formatMoney(personalExpense)}</Text>
-              </View>
+              {FUND_TYPES.map((ft) => {
+                const amt = fundBreakdown[ft.id] || 0;
+                if (amt === 0) return null;
+                return (
+                  <View key={ft.id} style={styles.fundLegendItem}>
+                    <View style={[styles.fundLegendDot, { backgroundColor: ft.color }]} />
+                    <Ionicons name={ft.icon} size={12} color={ft.color} />
+                    <Text style={styles.fundLegendLabel}>{ft.name}</Text>
+                    <Text style={styles.fundLegendValue}>{formatMoney(amt)}</Text>
+                  </View>
+                );
+              })}
             </View>
           </View>
         )}
@@ -360,10 +368,6 @@ export default function InsightsScreen() {
                 <View style={[styles.catDot, { backgroundColor: Colors.category[cat] || Colors.primary }]} />
                 <Ionicons name={ALL_CATEGORY_ICONS[cat] || 'ellipsis-horizontal-outline'} size={16} color={Colors.category[cat] || Colors.primary} />
                 <Text style={styles.catName}>{ALL_CATEGORY_NAMES[cat] || cat}</Text>
-                <View style={styles.catFundSplit}>
-                  {data.shared > 0 && <View style={[styles.catFundDot, { backgroundColor: Colors.primary }]} />}
-                  {data.personal > 0 && <View style={[styles.catFundDot, { backgroundColor: Colors.personal }]} />}
-                </View>
                 <Text style={styles.catAmount}>{formatMoney(data.total)}</Text>
                 <Text style={styles.catPct}>{Math.round((data.total / totalExpense) * 100)}%</Text>
               </View>
@@ -446,7 +450,7 @@ export default function InsightsScreen() {
             <View style={styles.txList}>
               <Text style={styles.txListTitle}>상세 내역</Text>
               {selectedTx.map((item, index) => {
-                const isPersonal = item.type === 'expense' && item.fundType === 'personal';
+                const ftInfo = FUND_TYPE_MAP[item.fundType] || FUND_TYPE_MAP['shared'];
                 const catColor = Colors.category[item.category] || Colors.primary;
                 return (
                   <View key={item.id} style={[styles.txItem, index === selectedTx.length - 1 && { borderBottomWidth: 0 }]}>
@@ -454,10 +458,10 @@ export default function InsightsScreen() {
                     <View style={styles.txInfo}>
                       <View style={styles.txTitleRow}>
                         <Text style={styles.txTitle} numberOfLines={1}>{item.memo || ALL_CATEGORY_NAMES[item.category] || '기타'}</Text>
-                        {item.type === 'expense' && (
-                          <View style={[styles.fundTag, { backgroundColor: isPersonal ? Colors.personal + '15' : Colors.primary + '12' }]}>
-                            <Ionicons name={isPersonal ? 'person' : 'people'} size={9} color={isPersonal ? Colors.personal : Colors.primary} />
-                            <Text style={[styles.fundTagText, { color: isPersonal ? Colors.personal : Colors.primary }]}>{isPersonal ? '용돈' : '공금'}</Text>
+                        {item.type === 'expense' && ftInfo && (
+                          <View style={[styles.fundTag, { backgroundColor: ftInfo.color + '15' }]}>
+                            <Ionicons name={ftInfo.icon} size={9} color={ftInfo.color} />
+                            <Text style={[styles.fundTagText, { color: ftInfo.color }]}>{ftInfo.name}</Text>
                           </View>
                         )}
                       </View>
@@ -575,7 +579,7 @@ const getStyles = (Colors) => StyleSheet.create({
   fundBarRow: { flexDirection: 'row', height: 28, borderRadius: 14, overflow: 'hidden', marginBottom: 14, gap: 2 },
   fundBar: { justifyContent: 'center', alignItems: 'center' },
   fundBarText: { fontSize: 11, fontWeight: '700', color: '#FFFFFF' },
-  fundLegendRow: { flexDirection: 'row', justifyContent: 'space-around' },
+  fundLegendRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'center' },
   fundLegendItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   fundLegendDot: { width: 8, height: 8, borderRadius: 4 },
   fundLegendLabel: { fontSize: 13, color: Colors.textGray },

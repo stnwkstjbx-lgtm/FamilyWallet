@@ -8,7 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../constants/ThemeContext';
 import { useAuth } from '../constants/AuthContext';
 import { useWallet } from '../constants/WalletContext';
-import { EXPENSE_CATEGORIES, INCOME_CATEGORIES } from '../constants/categories';
+import { EXPENSE_CATEGORIES, INCOME_CATEGORIES, FUND_TYPES, FUND_TYPE_MAP } from '../constants/categories';
 import { db } from '../firebase/firebaseConfig';
 import { collection, addDoc } from 'firebase/firestore';
 
@@ -83,7 +83,7 @@ export default function AddScreen() {
 
       await addDoc(collection(db, 'wallets', currentWalletId, 'transactions'), txData);
 
-      const fundLabel = type === 'expense' ? (fundType === 'personal' ? ' (용돈)' : ' (공금)') : '';
+      const fundLabel = type === 'expense' ? ` (${FUND_TYPE_MAP[fundType]?.name || '공금'})` : '';
       showAlert('저장 완료! ✅',
         `${myWalletName}님의 ${type === 'expense' ? '지출' : '수입'}${fundLabel}\n${parseInt(amount).toLocaleString('ko-KR')}원이 기록되었습니다.`
       );
@@ -242,7 +242,7 @@ export default function AddScreen() {
                   <View style={styles.fixedDayHint}>
                     <Ionicons name="information-circle-outline" size={14} color={Colors.textGray} />
                     <Text style={styles.fixedDayHintText}>
-                      해당 날짜에 {fixedType === 'income' ? '수입(급여 카테고리)' : '공금 지출(주거 카테고리)'}로 자동 기록됩니다
+                      해당 날짜에 {fixedType === 'income' ? '수입(급여 카테고리)' : '공과금 지출(주거 카테고리)'}로 자동 기록됩니다
                     </Text>
                   </View>
                 </View>
@@ -261,39 +261,29 @@ export default function AddScreen() {
             ) : (
               /* ===== 일반 지출/수입 폼 ===== */
               <>
-                {/* 공금/용돈 선택 (지출일 때만) */}
+                {/* 지출 출처 선택 (지출일 때만) */}
                 {type === 'expense' && (
                   <View style={styles.fundTypeCard}>
                     <Text style={styles.fundTypeLabel}>💳 지출 출처</Text>
-                    <View style={styles.fundTypeRow}>
-                      <TouchableOpacity
-                        style={[styles.fundTypeBtn, fundType === 'shared' && styles.fundTypeBtnActiveShared]}
-                        onPress={() => setFundType('shared')}
-                      >
-                        <View style={[styles.fundTypeIcon, { backgroundColor: fundType === 'shared' ? '#FFFFFF30' : Colors.primary + '15' }]}>
-                          <Ionicons name="people" size={18} color={fundType === 'shared' ? '#FFFFFF' : Colors.primary} />
-                        </View>
-                        <View style={styles.fundTypeTextBox}>
-                          <Text style={[styles.fundTypeName, fundType === 'shared' && { color: '#FFFFFF' }]}>공금</Text>
-                          <Text style={[styles.fundTypeDesc, fundType === 'shared' && { color: 'rgba(255,255,255,0.7)' }]}>가족 공용 지출</Text>
-                        </View>
-                        {fundType === 'shared' && <Ionicons name="checkmark-circle" size={20} color="#FFFFFF" />}
-                      </TouchableOpacity>
-
-                      <TouchableOpacity
-                        style={[styles.fundTypeBtn, fundType === 'personal' && styles.fundTypeBtnActivePersonal]}
-                        onPress={() => setFundType('personal')}
-                      >
-                        <View style={[styles.fundTypeIcon, { backgroundColor: fundType === 'personal' ? '#FFFFFF30' : Colors.income + '15' }]}>
-                          <Ionicons name="person" size={18} color={fundType === 'personal' ? '#FFFFFF' : Colors.income} />
-                        </View>
-                        <View style={styles.fundTypeTextBox}>
-                          <Text style={[styles.fundTypeName, fundType === 'personal' && { color: '#FFFFFF' }]}>용돈</Text>
-                          <Text style={[styles.fundTypeDesc, fundType === 'personal' && { color: 'rgba(255,255,255,0.7)' }]}>개인 용돈에서 차감</Text>
-                        </View>
-                        {fundType === 'personal' && <Ionicons name="checkmark-circle" size={20} color="#FFFFFF" />}
-                      </TouchableOpacity>
+                    <View style={styles.fundTypeGrid}>
+                      {FUND_TYPES.map((ft) => {
+                        const isActive = fundType === ft.id;
+                        const ftColor = ft.color;
+                        return (
+                          <TouchableOpacity
+                            key={ft.id}
+                            style={[styles.fundTypeChip, isActive && { backgroundColor: ftColor, borderColor: ftColor }]}
+                            onPress={() => setFundType(ft.id)}
+                          >
+                            <Ionicons name={ft.icon} size={16} color={isActive ? '#FFF' : ftColor} />
+                            <Text style={[styles.fundTypeChipText, isActive && { color: '#FFF' }]}>{ft.name}</Text>
+                          </TouchableOpacity>
+                        );
+                      })}
                     </View>
+                    <Text style={styles.fundTypeDescText}>
+                      {FUND_TYPE_MAP[fundType]?.desc || ''}
+                    </Text>
 
                     {fundType === 'personal' && myAllowance > 0 && (
                       <View style={styles.fundTypeHint}>
@@ -380,8 +370,7 @@ export default function AddScreen() {
                     <Ionicons name="checkmark-circle" size={22} color="#FFFFFF" />
                     <Text style={styles.saveText}>
                       {type === 'expense' ? '지출' : '수입'} 저장하기
-                      {type === 'expense' && fundType === 'personal' ? ' (용돈)' : ''}
-                      {type === 'expense' && fundType === 'shared' ? ' (공금)' : ''}
+                      {type === 'expense' ? ` (${FUND_TYPE_MAP[fundType]?.name || '공금'})` : ''}
                     </Text>
                   </LinearGradient>
                 </TouchableOpacity>
@@ -408,17 +397,13 @@ const getStyles = (Colors) => StyleSheet.create({
   typeButtonActiveExpense: { backgroundColor: Colors.expense },
   typeButtonActiveIncome: { backgroundColor: Colors.income },
   typeButtonActiveFixed: { backgroundColor: Colors.primary },
-  // 공금/용돈
+  // 지출 출처 (6분류)
   fundTypeCard: { backgroundColor: Colors.surface, borderRadius: 16, padding: 18, marginBottom: 14, borderWidth: 1, borderColor: Colors.border },
   fundTypeLabel: { fontSize: 14, fontWeight: '700', color: Colors.textBlack, marginBottom: 12 },
-  fundTypeRow: { gap: 10 },
-  fundTypeBtn: { flexDirection: 'row', alignItems: 'center', borderRadius: 14, padding: 14, gap: 12, backgroundColor: Colors.background, borderWidth: 1.5, borderColor: 'transparent' },
-  fundTypeBtnActiveShared: { backgroundColor: Colors.primary, borderColor: Colors.primary },
-  fundTypeBtnActivePersonal: { backgroundColor: Colors.income, borderColor: Colors.income },
-  fundTypeIcon: { width: 38, height: 38, borderRadius: 11, justifyContent: 'center', alignItems: 'center' },
-  fundTypeTextBox: { flex: 1 },
-  fundTypeName: { fontSize: 15, fontWeight: '700', color: Colors.textBlack },
-  fundTypeDesc: { fontSize: 12, color: Colors.textGray, marginTop: 1 },
+  fundTypeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  fundTypeChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 12, backgroundColor: Colors.background, borderWidth: 1.5, borderColor: Colors.border },
+  fundTypeChipText: { fontSize: 13, fontWeight: '700', color: Colors.textDark },
+  fundTypeDescText: { fontSize: 12, color: Colors.textGray, marginTop: 10 },
   fundTypeHint: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: Colors.divider },
   fundTypeHintText: { fontSize: 12, color: Colors.primary, flex: 1, lineHeight: 17 },
   // 기록자

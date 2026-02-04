@@ -8,7 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../constants/ThemeContext';
 import { useAuth } from '../constants/AuthContext';
 import { useWallet } from '../constants/WalletContext';
-import { ALL_CATEGORY_NAMES, ALL_CATEGORY_ICONS, EXPENSE_CATEGORIES, INCOME_CATEGORIES } from '../constants/categories';
+import { ALL_CATEGORY_NAMES, ALL_CATEGORY_ICONS, EXPENSE_CATEGORIES, INCOME_CATEGORIES, FUND_TYPE_MAP, FUND_TYPES } from '../constants/categories';
 import { db } from '../firebase/firebaseConfig';
 import {
   collection, onSnapshot, orderBy, query, deleteDoc, doc, getDocs, updateDoc, addDoc,
@@ -26,7 +26,7 @@ const showAlert = (title, message, buttons) => {
 export default function HomeScreen() {
   const { colors: Colors, isDark } = useTheme();
   const { user, userProfile } = useAuth();
-  const { currentWalletId, currentWallet, isAdmin, sharedBudgetInfo } = useWallet();
+  const { currentWalletId, currentWallet, isAdmin, sharedBudgetInfo, accumulatedFunds, monthlyFundBreakdown } = useWallet();
   const styles = getStyles(Colors);
 
   const [transactions, setTransactions] = useState([]);
@@ -104,7 +104,7 @@ export default function HomeScreen() {
               createdAt: new Date().toISOString(),
               fixedExpenseId: fixedDoc.id,
             };
-            if (!isIncome) txData.fundType = 'shared';
+            if (!isIncome) txData.fundType = 'utility';
             await addDoc(collection(db, 'wallets', currentWalletId, 'transactions'), txData);
             await updateDoc(doc(db, 'wallets', currentWalletId, 'fixedExpenses', fixedDoc.id), { lastRecordedMonth: currentMonth });
             if (isIncome) incCount++; else expCount++;
@@ -241,10 +241,10 @@ export default function HomeScreen() {
       // 필터: 유형
       if (filterType !== 'all' && t.type !== filterType) return false;
       
-      // 필터: 공금/용돈
+      // 필터: 지출 출처
       if (filterFundType !== 'all') {
-        if (filterFundType === 'shared' && t.fundType === 'personal') return false;
-        if (filterFundType === 'personal' && t.fundType !== 'personal') return false;
+        const txFund = t.fundType || 'shared';
+        if (txFund !== filterFundType) return false;
       }
       
       // 필터: 카테고리
@@ -482,7 +482,7 @@ export default function HomeScreen() {
                 </View>
               </View>
 
-              {/* 지출 상세 (공금/용돈) + 소비 비율 바 */}
+              {/* 지출 6분류 상세 + 소비 비율 바 */}
               <View style={styles.fundDetailCard}>
                 {/* 소비 비율 바 */}
                 {totalIncome > 0 && (
@@ -500,20 +500,70 @@ export default function HomeScreen() {
                   </View>
                 )}
                 <View style={styles.fundDetailDividerH} />
-                <View style={styles.fundDetailRow}>
-                  <View style={styles.fundDetailItem}>
-                    <View style={[styles.fundDetailDot, { backgroundColor: Colors.primary }]} />
-                    <Text style={styles.fundDetailLabel}>공금</Text>
-                    <Text style={[styles.fundDetailAmount, { color: Colors.primary }]}>{formatMoney(sharedExpense)}</Text>
+                {/* 6분류 그리드 */}
+                <View style={styles.fundBreakdownGrid}>
+                  {FUND_TYPES.map((ft) => {
+                    const amt = monthlyFundBreakdown?.[ft.id] || 0;
+                    if (ft.id === 'personal') return (
+                      <View key={ft.id} style={styles.fundBreakdownItem}>
+                        <View style={[styles.fundBreakdownDot, { backgroundColor: ft.color }]} />
+                        <Text style={styles.fundBreakdownLabel}>{ft.name} 배분</Text>
+                        <Text style={[styles.fundBreakdownAmt, { color: ft.color }]}>{formatMoney(totalAllowance)}</Text>
+                      </View>
+                    );
+                    return (
+                      <View key={ft.id} style={styles.fundBreakdownItem}>
+                        <View style={[styles.fundBreakdownDot, { backgroundColor: ft.color }]} />
+                        <Text style={styles.fundBreakdownLabel}>{ft.name}</Text>
+                        <Text style={[styles.fundBreakdownAmt, { color: ft.color }]}>{formatMoney(amt)}</Text>
+                      </View>
+                    );
+                  })}
+                </View>
+                {/* 순지출 */}
+                {monthlyFundBreakdown && (
+                  <View style={styles.netExpenseRow}>
+                    <Text style={styles.netExpenseLabel}>순지출 (자산이전 제외)</Text>
+                    <Text style={[styles.netExpenseAmount, { color: Colors.expense }]}>{formatMoney(monthlyFundBreakdown.netExpense)}</Text>
                   </View>
-                  <View style={styles.fundDetailDivider} />
-                  <View style={styles.fundDetailItem}>
-                    <View style={[styles.fundDetailDot, { backgroundColor: Colors.personal }]} />
-                    <Text style={styles.fundDetailLabel}>용돈 배분</Text>
-                    <Text style={[styles.fundDetailAmount, { color: Colors.personal }]}>{formatMoney(totalAllowance)}</Text>
+                )}
+              </View>
+
+              {/* 누적 자산 카드 (예적금/투자/비상금) */}
+              {accumulatedFunds && accumulatedFunds.total > 0 && (
+                <View style={styles.accumulatedCard}>
+                  <View style={styles.accumulatedHeader}>
+                    <View style={[styles.summaryIconWrap, { backgroundColor: '#2980B9' + '15' }]}>
+                      <Ionicons name="bar-chart" size={18} color="#2980B9" />
+                    </View>
+                    <Text style={styles.accumulatedTitle}>누적 자산</Text>
+                    <Text style={styles.accumulatedTotal}>{formatMoney(accumulatedFunds.total)}</Text>
+                  </View>
+                  <View style={styles.accumulatedRow}>
+                    {accumulatedFunds.savings > 0 && (
+                      <View style={styles.accumulatedItem}>
+                        <Ionicons name="wallet" size={14} color="#2980B9" />
+                        <Text style={styles.accumulatedItemLabel}>예적금</Text>
+                        <Text style={[styles.accumulatedItemAmt, { color: '#2980B9' }]}>{formatMoney(accumulatedFunds.savings)}</Text>
+                      </View>
+                    )}
+                    {accumulatedFunds.investment > 0 && (
+                      <View style={styles.accumulatedItem}>
+                        <Ionicons name="trending-up" size={14} color="#8E44AD" />
+                        <Text style={styles.accumulatedItemLabel}>투자</Text>
+                        <Text style={[styles.accumulatedItemAmt, { color: '#8E44AD' }]}>{formatMoney(accumulatedFunds.investment)}</Text>
+                      </View>
+                    )}
+                    {accumulatedFunds.emergency > 0 && (
+                      <View style={styles.accumulatedItem}>
+                        <Ionicons name="shield-checkmark" size={14} color="#16A085" />
+                        <Text style={styles.accumulatedItemLabel}>비상금</Text>
+                        <Text style={[styles.accumulatedItemAmt, { color: '#16A085' }]}>{formatMoney(accumulatedFunds.emergency)}</Text>
+                      </View>
+                    )}
                   </View>
                 </View>
-              </View>
+              )}
 
               {/* 주간 지출 차트 (풀 와이드) */}
               <View style={styles.weekChartCard}>
@@ -751,7 +801,7 @@ export default function HomeScreen() {
               )}
               {filterFundType !== 'all' && (
                 <View style={styles.filterChip}>
-                  <Text style={styles.filterChipText}>{filterFundType === 'shared' ? '공금' : '용돈'}</Text>
+                  <Text style={styles.filterChipText}>{FUND_TYPE_MAP[filterFundType]?.name || filterFundType}</Text>
                   <TouchableOpacity onPress={() => setFilterFundType('all')}>
                     <Ionicons name="close" size={14} color={Colors.primary} />
                   </TouchableOpacity>
@@ -814,7 +864,7 @@ export default function HomeScreen() {
                 );
               }
               const item = entry.data;
-              const isPersonal = item.type === 'expense' && item.fundType === 'personal';
+              const ftInfo = FUND_TYPE_MAP[item.fundType] || FUND_TYPE_MAP['shared'];
               return (
                 <TouchableOpacity
                   key={entry.key}
@@ -831,10 +881,10 @@ export default function HomeScreen() {
                     <Text style={styles.txTitle} numberOfLines={1}>{item.memo || ALL_CATEGORY_NAMES[item.category] || '기타'}</Text>
                     <View style={styles.txMeta}>
                       <Text style={styles.txDate}>{item.member || '미지정'}</Text>
-                      {item.type === 'expense' && (
-                        <View style={[styles.txTag, { backgroundColor: isPersonal ? Colors.personal + '15' : Colors.primary + '10' }]}>
-                          <Text style={[styles.txTagText, { color: isPersonal ? Colors.personal : Colors.primary }]}>
-                            {isPersonal ? '용돈' : '공금'}
+                      {item.type === 'expense' && ftInfo && (
+                        <View style={[styles.txTag, { backgroundColor: ftInfo.color + '15' }]}>
+                          <Text style={[styles.txTagText, { color: ftInfo.color }]}>
+                            {ftInfo.name}
                           </Text>
                         </View>
                       )}
@@ -966,23 +1016,19 @@ export default function HomeScreen() {
             ) : (
               /* ===== 일반 지출/수입 등록 폼 ===== */
               <>
-                {/* 공금/용돈 선택 (지출일 때만) */}
+                {/* 지출 출처 선택 (지출일 때만) */}
                 {quickType === 'expense' && (
                   <View style={styles.fundSelector}>
-                    <TouchableOpacity
-                      style={[styles.fundBtn, quickFundType === 'shared' && { backgroundColor: Colors.primary + '20', borderColor: Colors.primary }]}
-                      onPress={() => setQuickFundType('shared')}
-                    >
-                      <Ionicons name="people" size={16} color={Colors.primary} />
-                      <Text style={[styles.fundBtnText, { color: Colors.primary }]}>공금</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.fundBtn, quickFundType === 'personal' && { backgroundColor: Colors.personal + '20', borderColor: Colors.personal }]}
-                      onPress={() => setQuickFundType('personal')}
-                    >
-                      <Ionicons name="person" size={16} color={Colors.personal} />
-                      <Text style={[styles.fundBtnText, { color: Colors.personal }]}>용돈</Text>
-                    </TouchableOpacity>
+                    {FUND_TYPES.map((ft) => (
+                      <TouchableOpacity
+                        key={ft.id}
+                        style={[styles.fundBtn, quickFundType === ft.id && { backgroundColor: ft.color + '20', borderColor: ft.color }]}
+                        onPress={() => setQuickFundType(ft.id)}
+                      >
+                        <Ionicons name={ft.icon} size={14} color={ft.color} />
+                        <Text style={[styles.fundBtnText, { color: ft.color }]}>{ft.name}</Text>
+                      </TouchableOpacity>
+                    ))}
                   </View>
                 )}
 
@@ -1069,11 +1115,11 @@ export default function HomeScreen() {
               ))}
             </View>
 
-            {/* 공금/용돈 필터 */}
-            <Text style={styles.filterLabel}>지출 구분</Text>
+            {/* 지출 출처 필터 */}
+            <Text style={styles.filterLabel}>지출 출처</Text>
             <View style={styles.filterOptions}>
-              {[{ key: 'all', label: '전체' }, { key: 'shared', label: '공금' }, { key: 'personal', label: '용돈' }].map((opt) => (
-                <TouchableOpacity 
+              {[{ key: 'all', label: '전체' }, ...FUND_TYPES.map(ft => ({ key: ft.id, label: ft.name }))].map((opt) => (
+                <TouchableOpacity
                   key={opt.key}
                   style={[styles.filterOption, filterFundType === opt.key && styles.filterOptionActive]}
                   onPress={() => setFilterFundType(opt.key)}
@@ -1131,12 +1177,11 @@ export default function HomeScreen() {
             
             {editType === 'expense' && (
               <View style={styles.fundSelector}>
-                <TouchableOpacity style={[styles.fundBtn, editFundType === 'shared' && { backgroundColor: Colors.primary + '20', borderColor: Colors.primary }]} onPress={() => setEditFundType('shared')}>
-                  <Ionicons name="people" size={16} color={Colors.primary} /><Text style={[styles.fundBtnText, { color: Colors.primary }]}>공금</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.fundBtn, editFundType === 'personal' && { backgroundColor: Colors.personal + '20', borderColor: Colors.personal }]} onPress={() => setEditFundType('personal')}>
-                  <Ionicons name="person" size={16} color={Colors.personal} /><Text style={[styles.fundBtnText, { color: Colors.personal }]}>용돈</Text>
-                </TouchableOpacity>
+                {FUND_TYPES.map((ft) => (
+                  <TouchableOpacity key={ft.id} style={[styles.fundBtn, editFundType === ft.id && { backgroundColor: ft.color + '20', borderColor: ft.color }]} onPress={() => setEditFundType(ft.id)}>
+                    <Ionicons name={ft.icon} size={14} color={ft.color} /><Text style={[styles.fundBtnText, { color: ft.color }]}>{ft.name}</Text>
+                  </TouchableOpacity>
+                ))}
               </View>
             )}
             
@@ -1215,12 +1260,24 @@ const getStyles = (Colors) => StyleSheet.create({
   ratioBarLabel: { fontSize: 9, color: Colors.textLight },
   ratioBarValue: { fontSize: 11, fontWeight: '700' },
   fundDetailDividerH: { height: 1, backgroundColor: Colors.divider, marginBottom: 12 },
-  fundDetailRow: { flexDirection: 'row', alignItems: 'center' },
-  fundDetailItem: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
-  fundDetailDot: { width: 8, height: 8, borderRadius: 4 },
-  fundDetailLabel: { fontSize: 12, fontWeight: '600', color: Colors.textGray },
-  fundDetailAmount: { fontSize: 13, fontWeight: '700' },
-  fundDetailDivider: { width: 1, height: 20, backgroundColor: Colors.divider },
+  // 6분류 그리드
+  fundBreakdownGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 4 },
+  fundBreakdownItem: { width: '48%', flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 6 },
+  fundBreakdownDot: { width: 8, height: 8, borderRadius: 4 },
+  fundBreakdownLabel: { fontSize: 12, fontWeight: '600', color: Colors.textGray, flex: 1 },
+  fundBreakdownAmt: { fontSize: 12, fontWeight: '700' },
+  netExpenseRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: Colors.divider },
+  netExpenseLabel: { fontSize: 12, fontWeight: '700', color: Colors.textGray },
+  netExpenseAmount: { fontSize: 14, fontWeight: '800' },
+  // 누적 자산 카드
+  accumulatedCard: { backgroundColor: Colors.surface, borderRadius: 16, padding: 16, marginBottom: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 2 },
+  accumulatedHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
+  accumulatedTitle: { fontSize: 14, fontWeight: '700', color: Colors.textBlack, flex: 1 },
+  accumulatedTotal: { fontSize: 16, fontWeight: '800', color: '#2980B9' },
+  accumulatedRow: { flexDirection: 'row', gap: 8 },
+  accumulatedItem: { flex: 1, backgroundColor: Colors.background, borderRadius: 12, padding: 10, alignItems: 'center', gap: 4 },
+  accumulatedItemLabel: { fontSize: 11, color: Colors.textGray, fontWeight: '600' },
+  accumulatedItemAmt: { fontSize: 12, fontWeight: '700' },
 
   // 주간 차트 카드 (풀 와이드)
   weekChartCard: { backgroundColor: Colors.surface, borderRadius: 16, padding: 16, marginBottom: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 2 },
@@ -1346,9 +1403,9 @@ const getStyles = (Colors) => StyleSheet.create({
   typeSelector: { flexDirection: 'row', gap: 10, marginBottom: 16 },
   typeBtn: { flex: 1, paddingVertical: 12, borderRadius: 12, alignItems: 'center', backgroundColor: Colors.background },
   typeBtnText: { fontSize: 15, fontWeight: '700', color: Colors.textGray },
-  fundSelector: { flexDirection: 'row', gap: 10, marginBottom: 16 },
-  fundBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 10, borderWidth: 1.5, borderColor: Colors.border, backgroundColor: Colors.background },
-  fundBtnText: { fontSize: 13, fontWeight: '600' },
+  fundSelector: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 16 },
+  fundBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, paddingVertical: 8, paddingHorizontal: 10, borderRadius: 10, borderWidth: 1.5, borderColor: Colors.border, backgroundColor: Colors.background },
+  fundBtnText: { fontSize: 11, fontWeight: '600' },
   inputLabel: { fontSize: 13, fontWeight: '600', color: Colors.textGray, marginBottom: 8, marginTop: 12 },
   amountInput: { backgroundColor: Colors.background, borderRadius: 12, padding: 16, fontSize: 24, fontWeight: '700', color: Colors.textBlack, textAlign: 'center' },
   amountPreview: { fontSize: 14, color: Colors.primary, textAlign: 'center', marginTop: 4 },
