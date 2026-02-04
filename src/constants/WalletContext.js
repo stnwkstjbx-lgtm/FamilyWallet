@@ -68,10 +68,11 @@ export function WalletProvider({ children }) {
   // ══════════════════════════════════════════
 
   // 가계부 생성
-  const createWallet = async (name) => {
+  const createWallet = async (name, nickname) => {
     try {
       if (!user) return { success: false, message: '로그인이 필요합니다' };
       if (wallets.length >= MAX_WALLETS) return { success: false, message: `최대 ${MAX_WALLETS}개의 가계부만 만들 수 있어요` };
+      if (!nickname || !nickname.trim()) return { success: false, message: '닉네임을 입력해 주세요' };
 
       const inviteCode = generateInviteCode();
       const walletRef = doc(collection(db, 'wallets'));
@@ -81,7 +82,7 @@ export function WalletProvider({ children }) {
         createdBy: user.uid,
         members: {
           [user.uid]: {
-            name: user.displayName || user.email,
+            name: nickname.trim(),
             role: 'admin',
             monthlyAllowance: 0,
           },
@@ -104,10 +105,11 @@ export function WalletProvider({ children }) {
   };
 
   // 초대코드로 합류
-  const joinWallet = async (code) => {
+  const joinWallet = async (code, nickname) => {
     try {
       if (!user) return { success: false, message: '로그인이 필요합니다' };
       if (wallets.length >= MAX_WALLETS) return { success: false, message: `최대 ${MAX_WALLETS}개의 가계부만 참여할 수 있어요` };
+      if (!nickname || !nickname.trim()) return { success: false, message: '닉네임을 입력해 주세요' };
 
       const walletsRef = collection(db, 'wallets');
       const q = query(walletsRef, where('inviteCode', '==', code.toUpperCase()));
@@ -122,7 +124,7 @@ export function WalletProvider({ children }) {
 
       await updateDoc(doc(db, 'wallets', walletDoc.id), {
         [`members.${user.uid}`]: {
-          name: user.displayName || user.email,
+          name: nickname.trim(),
           role: 'member',
           monthlyAllowance: 0,
         },
@@ -213,10 +215,11 @@ export function WalletProvider({ children }) {
   const addTransaction = async (transactionData) => {
     if (!currentWalletId || !user) return;
     const txRef = collection(db, 'wallets', currentWalletId, 'transactions');
+    const myNickname = currentWallet?.members?.[user.uid]?.name || user.displayName || user.email;
     await addDoc(txRef, {
       ...transactionData,
       memberId: user.uid,
-      memberName: user.displayName || user.email,
+      memberName: myNickname,
       createdAt: new Date().toISOString(),
     });
   };
@@ -251,6 +254,7 @@ export function WalletProvider({ children }) {
       await deleteDoc(d.ref);
     }
 
+    const myNickname = currentWallet?.members?.[user.uid]?.name || user.displayName || user.email;
     await addDoc(txRef, {
       type: 'expense',
       fundType: 'allowance_allocation',
@@ -262,7 +266,7 @@ export function WalletProvider({ children }) {
       allocatedTo: memberId,
       allocatedToName: memberName,
       memberId: user.uid,
-      memberName: user.displayName || user.email,
+      memberName: myNickname,
       createdAt: new Date().toISOString(),
     });
   };
@@ -270,6 +274,7 @@ export function WalletProvider({ children }) {
   const addPersonalExpense = async ({ category, amount, description, date }) => {
     if (!currentWalletId || !user) return;
 
+    const myNickname = currentWallet?.members?.[user.uid]?.name || user.displayName || user.email;
     const txRef = collection(db, 'wallets', currentWalletId, 'transactions');
     await addDoc(txRef, {
       type: 'expense',
@@ -279,7 +284,7 @@ export function WalletProvider({ children }) {
       description,
       date: date || new Date().toISOString().slice(0, 10),
       memberId: user.uid,
-      memberName: user.displayName || user.email,
+      memberName: myNickname,
       createdAt: new Date().toISOString(),
     });
   };

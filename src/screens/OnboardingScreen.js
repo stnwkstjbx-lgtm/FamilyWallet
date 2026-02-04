@@ -3,7 +3,7 @@
  * ─────────────────────────────────────────────
  * 수정 사항:
  *   1. "다음" 버튼이 FlatList를 다음 카드로 스크롤
- *   2. 마지막 카드에서 "다음" → "로그인 하러 가기" 로 변경
+ *   2. 마지막 카드에서 "다음" → "회원가입 하러 가기" 로 변경
  *   3. 마지막 카드 버튼 누르면 onFinish('signup') 호출
  *   4. 하단 "이미 계정이 있으신가요? 로그인" 링크 유지
  * ─────────────────────────────────────────────
@@ -34,7 +34,7 @@ const ONBOARDING_DATA = [
     icon: 'wallet-outline',
     title: '가족 가계부',
     subtitle: '함께 관리하는 우리 가족 살림',
-    description: '초대코드 하나로 가족 모두가\n같은 가계부를 공유해요.',
+    description: '초대코드 하나로 가족 모두가\n같은 가계부를 공유하고\n닉네임으로 쉽게 구분해요.',
     gradient: ['#6C63FF', '#897BFF'],
   },
   {
@@ -42,31 +42,31 @@ const ONBOARDING_DATA = [
     icon: 'cash-outline',
     title: '공금 & 용돈',
     subtitle: '투명한 지출 관리',
-    description: '가족 공금과 개인 용돈을\n깔끔하게 분리해서 관리해요.',
+    description: '가족 공금과 개인 용돈을\n분리해서 관리하고\n용돈 사용 리포트도 확인해요.',
     gradient: ['#FF6B6B', '#FF8E8E'],
   },
   {
     id: '3',
-    icon: 'stats-chart-outline',
-    title: '한눈에 보는 통계',
-    subtitle: '도넛 차트로 쉽게',
-    description: '카테고리별 지출 비율을\n직관적인 차트로 확인하세요.',
+    icon: 'analytics-outline',
+    title: '통계 & 분석',
+    subtitle: '도넛 차트와 일별 추이',
+    description: '카테고리별 지출 비율,\n전월 대비 변화, 일별 추이를\n직관적인 차트로 확인하세요.',
     gradient: ['#4ECDC4', '#6EE7DF'],
   },
   {
     id: '4',
     icon: 'calendar-outline',
-    title: '달력 & 고정지출',
-    subtitle: '놓치는 지출 없이',
-    description: '매월 반복되는 고정지출을\n자동으로 기록해드려요.',
+    title: '캘린더 & 고정지출',
+    subtitle: '일별 수입·지출 한눈에',
+    description: '캘린더에서 날짜별 금액을 확인하고\n고정지출은 매월 자동 기록해드려요.',
     gradient: ['#FFD93D', '#FFE566'],
   },
   {
     id: '5',
-    icon: 'trending-up-outline',
-    title: '저축 리포트',
-    subtitle: '미래를 위한 동기부여',
-    description: '이대로 모으면 5년 뒤엔 얼마?\n저축 목표를 함께 세워봐요.',
+    icon: 'people-outline',
+    title: '가족과 함께',
+    subtitle: '최대 3개 가계부 운용',
+    description: '여러 가계부를 만들고 전환하며\n가족 구성원별 용돈 배분과\n지출 현황을 한눈에 관리해요.',
     gradient: ['#2ECC71', '#58D68D'],
   },
 ];
@@ -286,8 +286,8 @@ export default function OnboardingScreen({ onFinish }) {
           >
             {isLastCard ? (
               <>
-                <Ionicons name="log-in-outline" size={22} color="#fff" style={{ marginRight: 8 }} />
-                <Text style={styles.nextButtonTextLast}>로그인 하러 가기</Text>
+                <Ionicons name="person-add-outline" size={22} color="#fff" style={{ marginRight: 8 }} />
+                <Text style={styles.nextButtonTextLast}>회원가입 하러 가기</Text>
               </>
             ) : (
               <>

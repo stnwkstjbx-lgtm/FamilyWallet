@@ -31,6 +31,8 @@ export default function WalletSelectScreen() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showJoinModal, setShowJoinModal] = useState(false);
   const [walletName, setWalletName] = useState('');
+  const [nickname, setNickname] = useState('');
+  const [joinNickname, setJoinNickname] = useState('');
   const [inviteCode, setInviteCode] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -41,13 +43,15 @@ export default function WalletSelectScreen() {
   };
 
   const handleCreate = async () => {
-    if (!walletName.trim()) return;
+    if (!walletName.trim()) { showAlert('알림', '가계부 이름을 입력해 주세요!'); return; }
+    if (!nickname.trim()) { showAlert('알림', '닉네임을 입력해 주세요!'); return; }
     setLoading(true);
-    const result = await createWallet(walletName.trim());
+    const result = await createWallet(walletName.trim(), nickname.trim());
     setLoading(false);
     if (result.success) {
       setShowCreateModal(false);
       setWalletName('');
+      setNickname('');
       showAlert('🎉 생성 완료!', `초대 코드: ${result.inviteCode}`);
     } else {
       showAlert('오류', result.message);
@@ -55,13 +59,15 @@ export default function WalletSelectScreen() {
   };
 
   const handleJoin = async () => {
-    if (!inviteCode.trim() || inviteCode.trim().length < 6) return;
+    if (!inviteCode.trim() || inviteCode.trim().length < 6) { showAlert('알림', '초대코드 6자리를 입력해 주세요!'); return; }
+    if (!joinNickname.trim()) { showAlert('알림', '닉네임을 입력해 주세요!'); return; }
     setLoading(true);
-    const result = await joinWallet(inviteCode.trim());
+    const result = await joinWallet(inviteCode.trim(), joinNickname.trim());
     setLoading(false);
     if (result.success) {
       setShowJoinModal(false);
       setInviteCode('');
+      setJoinNickname('');
       showAlert('🎉 합류 완료!', `"${result.walletName}" 가계부에 합류했습니다!`);
     } else {
       showAlert('오류', result.message);
@@ -207,8 +213,17 @@ export default function WalletSelectScreen() {
               onChangeText={setWalletName}
               maxLength={20}
             />
+            <Text style={styles.nicknameLabel}>이 가계부에서 사용할 닉네임</Text>
+            <TextInput
+              style={styles.modalInput}
+              placeholder="닉네임 (예: 엄마, 아빠, 첫째)"
+              placeholderTextColor={Colors.textLight}
+              value={nickname}
+              onChangeText={setNickname}
+              maxLength={10}
+            />
             <View style={styles.modalButtons}>
-              <TouchableOpacity style={styles.modalCancelBtn} onPress={() => setShowCreateModal(false)}>
+              <TouchableOpacity style={styles.modalCancelBtn} onPress={() => { setShowCreateModal(false); setNickname(''); }}>
                 <Text style={styles.modalCancelText}>취소</Text>
               </TouchableOpacity>
               <TouchableOpacity style={[styles.modalSaveBtn, loading && { opacity: 0.6 }]} onPress={handleCreate} disabled={loading}>
@@ -233,8 +248,17 @@ export default function WalletSelectScreen() {
               maxLength={6}
               autoCapitalize="characters"
             />
+            <Text style={styles.nicknameLabel}>이 가계부에서 사용할 닉네임</Text>
+            <TextInput
+              style={styles.modalInput}
+              placeholder="닉네임 (예: 엄마, 아빠, 첫째)"
+              placeholderTextColor={Colors.textLight}
+              value={joinNickname}
+              onChangeText={setJoinNickname}
+              maxLength={10}
+            />
             <View style={styles.modalButtons}>
-              <TouchableOpacity style={styles.modalCancelBtn} onPress={() => setShowJoinModal(false)}>
+              <TouchableOpacity style={styles.modalCancelBtn} onPress={() => { setShowJoinModal(false); setJoinNickname(''); }}>
                 <Text style={styles.modalCancelText}>취소</Text>
               </TouchableOpacity>
               <TouchableOpacity style={[styles.modalSaveBtn, loading && { opacity: 0.6 }]} onPress={handleJoin} disabled={loading}>
@@ -280,6 +304,7 @@ const getStyles = (Colors) => StyleSheet.create({
   modalContent: { backgroundColor: Colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 40 },
   modalTitle: { fontSize: 20, fontWeight: 'bold', color: Colors.textBlack, marginBottom: 16 },
   modalInput: { backgroundColor: Colors.background, borderRadius: 12, padding: 14, fontSize: 16, color: Colors.textBlack, marginBottom: 16 },
+  nicknameLabel: { fontSize: 13, fontWeight: '600', color: Colors.textGray, marginBottom: 8 },
   modalButtons: { flexDirection: 'row', gap: 12 },
   modalCancelBtn: { flex: 1, backgroundColor: Colors.background, borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
   modalCancelText: { fontSize: 15, fontWeight: '600', color: Colors.textGray },
