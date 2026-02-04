@@ -28,5 +28,8 @@
     "react-native-svg": "15.12.1",
     "react-native-web": "^0.21.0"
   },
+  "devDependencies": {
+    "babel-preset-expo": "~13.0.0"
+  },
   "private": true
 }
