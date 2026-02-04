@@ -290,6 +290,60 @@ export function WalletProvider({ children }) {
   };
 
   // ══════════════════════════════════════════
+  // ★ 용돈 요청 시스템
+  // ══════════════════════════════════════════
+
+  const requestAllowance = async (amount, message) => {
+    if (!currentWalletId || !user) return { success: false, message: '로그인이 필요합니다' };
+    try {
+      const myNickname = currentWallet?.members?.[user.uid]?.name || user.displayName || '사용자';
+      const reqRef = collection(db, 'wallets', currentWalletId, 'allowanceRequests');
+      await addDoc(reqRef, {
+        userId: user.uid,
+        userName: myNickname,
+        amount,
+        message: message || '',
+        status: 'pending',
+        createdAt: new Date().toISOString(),
+      });
+      return { success: true };
+    } catch (error) {
+      return { success: false, message: error.message || '요청에 실패했습니다' };
+    }
+  };
+
+  const respondToAllowanceRequest = async (requestId, approved, finalAmount) => {
+    if (!currentWalletId || !user || !isAdmin) return { success: false, message: '권한이 없습니다' };
+    try {
+      const reqRef = doc(db, 'wallets', currentWalletId, 'allowanceRequests', requestId);
+      const reqSnap = await getDoc(reqRef);
+      if (!reqSnap.exists()) return { success: false, message: '요청을 찾을 수 없습니다' };
+
+      const reqData = reqSnap.data();
+
+      if (approved) {
+        // 용돈 설정
+        await updateDoc(doc(db, 'wallets', currentWalletId), {
+          [`members.${reqData.userId}.allowance`]: finalAmount,
+          [`members.${reqData.userId}.monthlyAllowance`]: finalAmount,
+        });
+      }
+
+      // 요청 상태 업데이트
+      await updateDoc(reqRef, {
+        status: approved ? 'approved' : 'rejected',
+        respondedAmount: approved ? finalAmount : null,
+        respondedAt: new Date().toISOString(),
+        respondedBy: user.uid,
+      });
+
+      return { success: true };
+    } catch (error) {
+      return { success: false, message: error.message || '처리에 실패했습니다' };
+    }
+  };
+
+  // ══════════════════════════════════════════
   // ★ 용돈 조회 함수들
   // ══════════════════════════════════════════
 
@@ -522,6 +576,10 @@ export function WalletProvider({ children }) {
     getAllowanceReport,
     getFamilyTotalExpense,
     getFamilyTotalIncome,
+
+    // ★ 용돈 요청 시스템
+    requestAllowance,
+    respondToAllowanceRequest,
   };
 
   return <WalletContext.Provider value={value}>{children}</WalletContext.Provider>;
