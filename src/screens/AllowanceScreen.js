@@ -31,22 +31,17 @@ import { Ionicons } from '@expo/vector-icons';
 import { useWallet } from '../constants/WalletContext';
 import { useAuth } from '../constants/AuthContext';
 import { useTheme } from '../constants/ThemeContext';
+import { EXPENSE_CATEGORIES, ALL_CATEGORY_NAMES, ALL_CATEGORY_ICONS } from '../constants/categories';
 import { db } from '../firebase/firebaseConfig';
 import { collection, query, where, onSnapshot, addDoc, orderBy } from 'firebase/firestore';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-// ───── 카테고리 목록 ─────
-const PERSONAL_CATEGORIES = [
-  { key: '식비', icon: 'fast-food-outline', color: '#FF6B6B' },
-  { key: '카페', icon: 'cafe-outline', color: '#D4A574' },
-  { key: '교통', icon: 'bus-outline', color: '#4ECDC4' },
-  { key: '쇼핑', icon: 'cart-outline', color: '#FFD93D' },
-  { key: '취미', icon: 'game-controller-outline', color: '#6C63FF' },
-  { key: '문화', icon: 'film-outline', color: '#FF8E8E' },
-  { key: '건강', icon: 'fitness-outline', color: '#2ECC71' },
-  { key: '기타', icon: 'ellipsis-horizontal-outline', color: '#95A5A6' },
-];
+// 카테고리 색상 매핑 (ThemeContext의 category 색상과 동일)
+const CATEGORY_COLORS = {
+  food: '#FF6B6B', transport: '#4ECDC4', shopping: '#FFE66D', health: '#2BC48A',
+  education: '#5B6BF5', entertainment: '#FF8A5C', housing: '#96BAFF', etc: '#B0B8C1',
+};
 
 export default function AllowanceScreen() {
   const { colors } = useTheme();
@@ -59,10 +54,13 @@ export default function AllowanceScreen() {
   const [expenseDesc, setExpenseDesc] = useState('');
   const [personalTransactions, setPersonalTransactions] = useState([]);
 
-  // 내 용돈 금액
-  const myAllowance = currentWallet?.members?.[user?.uid]?.allowance || 0;
+  // 내 용돈 금액 (monthlyAllowance 또는 allowance)
+  const myAllowance = currentWallet?.members?.[user?.uid]?.monthlyAllowance
+    || currentWallet?.members?.[user?.uid]?.allowance || 0;
 
   // ★ 내 용돈 사용 내역만 가져오기 (본인 것만!)
+  const [allocationTransactions, setAllocationTransactions] = useState([]);
+
   useEffect(() => {
     if (!currentWalletId || !user) return;
 
@@ -78,20 +76,41 @@ export default function AllowanceScreen() {
       setPersonalTransactions(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
     });
 
-    return () => unsub();
+    // 용돈 배분 내역도 가져오기 (실제로 배분된 달만 계산하기 위해)
+    const allocQ = query(
+      txRef,
+      where('fundType', '==', 'allowance_allocation'),
+      where('allocatedTo', '==', user.uid)
+    );
+    const unsub2 = onSnapshot(allocQ, (snap) => {
+      setAllocationTransactions(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    });
+
+    return () => { unsub(); unsub2(); };
   }, [currentWalletId, user]);
 
-  // ───── 월별 데이터 계산 ─────
+  // ───── 월별 데이터 계산 (실제 배분된 달만 계산) ─────
   const monthlyStats = useMemo(() => {
     const now = new Date();
+    const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     const stats = {};
 
-    // 최근 12개월 초기화
-    for (let i = 0; i < 12; i++) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      stats[key] = { allowance: myAllowance, spent: 0, saved: myAllowance };
+    // 배분 내역 기반으로 어떤 달에 실제 배분이 있었는지 확인
+    const allocatedMonths = {};
+    allocationTransactions.forEach((tx) => {
+      const ym = tx.allocMonth || tx.date?.slice(0, 7);
+      if (ym) allocatedMonths[ym] = tx.amount || 0;
+    });
+
+    // 이번 달은 현재 설정된 용돈액 사용 (아직 배분 tx가 없을 수 있음)
+    if (!allocatedMonths[currentMonth] && myAllowance > 0) {
+      allocatedMonths[currentMonth] = myAllowance;
     }
+
+    // 배분이 있었던 달만 초기화
+    Object.entries(allocatedMonths).forEach(([ym, amount]) => {
+      stats[ym] = { allowance: amount, spent: 0, saved: amount };
+    });
 
     // 지출 합산
     personalTransactions.forEach((tx) => {
@@ -103,7 +122,7 @@ export default function AllowanceScreen() {
     });
 
     return stats;
-  }, [personalTransactions, myAllowance]);
+  }, [personalTransactions, allocationTransactions, myAllowance]);
 
   // ───── 리포트 계산 ─────
   const report = useMemo(() => {
@@ -205,10 +224,12 @@ export default function AllowanceScreen() {
         fundType: 'personal',
         category: selectedCategory,
         amount,
-        memo: expenseDesc || selectedCategory,
-        date: new Date().toISOString(),
+        memo: expenseDesc || ALL_CATEGORY_NAMES[selectedCategory] || selectedCategory,
+        date: new Date().toISOString().slice(0, 10),
         userId: user.uid,
+        memberId: user.uid,
         member: currentWallet?.members?.[user.uid]?.name || user.displayName || user.email,
+        memberName: currentWallet?.members?.[user.uid]?.name || user.displayName || user.email,
         createdAt: new Date().toISOString(),
       });
       setShowAddModal(false);
@@ -428,21 +449,25 @@ export default function AllowanceScreen() {
           </View>
         ) : (
           report.currentMonthTxs.map((tx) => {
-            const catInfo = PERSONAL_CATEGORIES.find((c) => c.key === tx.category) ||
-              PERSONAL_CATEGORIES[PERSONAL_CATEGORIES.length - 1];
+            const catColor = CATEGORY_COLORS[tx.category] || colors.category?.[tx.category] || '#95A5A6';
+            const catIcon = ALL_CATEGORY_ICONS[tx.category] || 'ellipsis-horizontal-outline';
+            const catName = ALL_CATEGORY_NAMES[tx.category] || tx.category;
 
             return (
               <View key={tx.id} style={[styles.txItem, { borderBottomColor: colors.divider }]}>
-                <View style={[styles.txIconCircle, { backgroundColor: catInfo.color + '20' }]}>
-                  <Ionicons name={catInfo.icon} size={20} color={catInfo.color} />
+                <View style={[styles.txIconCircle, { backgroundColor: catColor + '20' }]}>
+                  <Ionicons name={catIcon} size={20} color={catColor} />
                 </View>
                 <View style={styles.txInfo}>
-                  <Text style={[styles.txCategory, { color: colors.textBlack }]}>{tx.memo || tx.category}</Text>
+                  <Text style={[styles.txCategory, { color: colors.textBlack }]}>{tx.memo || catName}</Text>
                   <Text style={[styles.txDesc, { color: colors.textGray }]}>
-                    {new Date(tx.date).toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' })}
+                    {tx.date?.includes('T')
+                      ? new Date(tx.date).toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' })
+                      : (() => { const [,m,d] = (tx.date || '').split('-'); return `${parseInt(m)}월 ${parseInt(d)}일`; })()
+                    }
                   </Text>
                 </View>
-                <Text style={[styles.txAmount, { color: '#FF6B6B' }]}>
+                <Text style={[styles.txAmount, { color: colors.expense }]}>
                   -{formatMoneyShort(tx.amount)}
                 </Text>
               </View>
@@ -471,36 +496,39 @@ export default function AllowanceScreen() {
 
             <Text style={[styles.modalLabel, { color: colors.textGray }]}>카테고리</Text>
             <View style={styles.categoryGrid}>
-              {PERSONAL_CATEGORIES.map((cat) => (
-                <TouchableOpacity
-                  key={cat.key}
-                  style={[
-                    styles.categoryItem,
-                    {
-                      backgroundColor:
-                        selectedCategory === cat.key ? cat.color + '20' : colors.background,
-                      borderColor: selectedCategory === cat.key ? cat.color : 'transparent',
-                    },
-                  ]}
-                  onPress={() => setSelectedCategory(cat.key)}
-                >
-                  <Ionicons
-                    name={cat.icon}
-                    size={22}
-                    color={selectedCategory === cat.key ? cat.color : colors.textGray}
-                  />
-                  <Text
+              {EXPENSE_CATEGORIES.map((cat) => {
+                const catColor = CATEGORY_COLORS[cat.id] || colors.primary;
+                return (
+                  <TouchableOpacity
+                    key={cat.id}
                     style={[
-                      styles.categoryItemText,
+                      styles.categoryItem,
                       {
-                        color: selectedCategory === cat.key ? cat.color : colors.textGray,
+                        backgroundColor:
+                          selectedCategory === cat.id ? catColor + '20' : colors.background,
+                        borderColor: selectedCategory === cat.id ? catColor : 'transparent',
                       },
                     ]}
+                    onPress={() => setSelectedCategory(cat.id)}
                   >
-                    {cat.key}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+                    <Ionicons
+                      name={cat.icon}
+                      size={22}
+                      color={selectedCategory === cat.id ? catColor : colors.textGray}
+                    />
+                    <Text
+                      style={[
+                        styles.categoryItemText,
+                        {
+                          color: selectedCategory === cat.id ? catColor : colors.textGray,
+                        },
+                      ]}
+                    >
+                      {cat.name}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
 
             <Text style={[styles.modalLabel, { color: colors.textGray }]}>금액</Text>
