@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, StatusBar, TextInput,
-  TouchableOpacity, Alert, Modal, Switch, Platform,
+  TouchableOpacity, Alert, Modal, Switch, Platform, ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -24,7 +24,7 @@ const showAlert = (title, message, buttons) => {
 
 export default function SettingsScreen() {
   const { colors: Colors, isDark, toggleTheme } = useTheme();
-  const { user, userProfile, logout, updateUserProfile } = useAuth();
+  const { user, userProfile, logout, updateUserProfile, resetPassword, deleteAccount } = useAuth();
   const {
     currentWalletId, currentWallet, isAdmin, userWallets, maxWallets,
     switchWallet, leaveWallet, regenerateInviteCode, getInviteLink, goToWalletList, toggleAdmin,
@@ -45,6 +45,9 @@ export default function SettingsScreen() {
   const [userExpenses, setUserExpenses] = useState({});
   const [totalIncome, setTotalIncome] = useState(0);
   const [totalExpense, setTotalExpense] = useState(0);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deletePassword, setDeletePassword] = useState('');
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
   useEffect(() => {
     if (!currentWalletId) return;
@@ -215,6 +218,28 @@ export default function SettingsScreen() {
     ]);
   };
 
+  const handleResetPassword = async () => {
+    if (!user?.email) return;
+    const result = await resetPassword(user.email);
+    if (result.success) {
+      showAlert('이메일 발송 완료', '비밀번호 재설정 링크가 이메일로 발송되었습니다.');
+    } else {
+      showAlert('오류', result.message);
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    setDeleteLoading(true);
+    const isEmailUser = user?.providerData?.[0]?.providerId === 'password';
+    const result = await deleteAccount(isEmailUser ? deletePassword : null);
+    setDeleteLoading(false);
+    if (result.success) {
+      setShowDeleteModal(false);
+    } else {
+      showAlert('오류', result.message);
+    }
+  };
+
   const formatMoney = (n) => n.toLocaleString('ko-KR') + '원';
   const userName = userProfile?.name || user?.displayName || '사용자';
 
@@ -249,6 +274,12 @@ export default function SettingsScreen() {
               <Ionicons name="log-out-outline" size={18} color={Colors.expense} />
               <Text style={styles.logoutText}>로그아웃</Text>
             </TouchableOpacity>
+            {user?.providerData?.[0]?.providerId === 'password' && (
+              <TouchableOpacity style={styles.resetPwBtn} onPress={handleResetPassword}>
+                <Ionicons name="key-outline" size={16} color={Colors.primary} />
+                <Text style={styles.resetPwText}>비밀번호 재설정</Text>
+              </TouchableOpacity>
+            )}
           </View>
 
           {/* 다크모드 */}
@@ -438,6 +469,12 @@ export default function SettingsScreen() {
             </Text>
           </TouchableOpacity>
 
+          {/* 계정 삭제 */}
+          <TouchableOpacity style={styles.deleteAccountBtn} onPress={() => { setDeletePassword(''); setShowDeleteModal(true); }}>
+            <Ionicons name="warning-outline" size={16} color={Colors.textLight} />
+            <Text style={styles.deleteAccountText}>계정 삭제</Text>
+          </TouchableOpacity>
+
           <View style={styles.appInfo}>
             <Text style={styles.appInfoText}>패밀리 월렛 v2.1.0</Text>
           </View>
@@ -495,6 +532,44 @@ export default function SettingsScreen() {
           <View style={styles.modalBtns}>
             <TouchableOpacity style={styles.modalCancelBtn} onPress={() => { setShowFixedModal(false); setFixedName(''); setFixedAmount(''); setFixedDay(''); setFixedType('expense'); }}><Text style={styles.modalCancelText}>취소</Text></TouchableOpacity>
             <TouchableOpacity style={styles.modalSaveBtn} onPress={handleAddFixed}><Text style={styles.modalSaveText}>추가</Text></TouchableOpacity>
+          </View>
+        </View></View>
+      </Modal>
+
+      {/* 계정 삭제 모달 */}
+      <Modal visible={showDeleteModal} transparent animationType="slide">
+        <View style={styles.modalOverlay}><View style={styles.modalContent}>
+          <View style={styles.deleteModalHeader}>
+            <Ionicons name="warning" size={28} color={Colors.expense} />
+            <Text style={[styles.modalTitle, { color: Colors.expense, marginBottom: 0, marginLeft: 8 }]}>계정 삭제</Text>
+          </View>
+          <Text style={styles.deleteWarning}>
+            계정을 삭제하면 모든 데이터가 영구적으로 삭제되며 복구할 수 없습니다. 참여 중인 가계부에서도 자동으로 탈퇴됩니다.
+          </Text>
+          {user?.providerData?.[0]?.providerId === 'password' && (
+            <TextInput
+              style={styles.modalInput}
+              placeholder="비밀번호 확인"
+              placeholderTextColor={Colors.textLight}
+              secureTextEntry
+              value={deletePassword}
+              onChangeText={setDeletePassword}
+            />
+          )}
+          <View style={styles.modalBtns}>
+            <TouchableOpacity style={styles.modalCancelBtn} onPress={() => setShowDeleteModal(false)}>
+              <Text style={styles.modalCancelText}>취소</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.modalSaveBtn, { backgroundColor: Colors.expense }]}
+              onPress={handleDeleteAccount}
+              disabled={deleteLoading}
+            >
+              {deleteLoading
+                ? <ActivityIndicator color="#FFF" size="small" />
+                : <Text style={styles.modalSaveText}>삭제</Text>
+              }
+            </TouchableOpacity>
           </View>
         </View></View>
       </Modal>
@@ -598,4 +673,12 @@ const getStyles = (Colors) => StyleSheet.create({
   fixedToggleRow: { flexDirection: 'row', gap: 10, marginBottom: 16 },
   fixedToggleBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 12, backgroundColor: Colors.background, borderWidth: 1.5, borderColor: Colors.border },
   fixedToggleText: { fontSize: 14, fontWeight: '600', color: Colors.textGray },
+  // 비밀번호 재설정
+  resetPwBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, marginTop: 8, borderRadius: 10, backgroundColor: Colors.primary + '10' },
+  resetPwText: { fontSize: 13, fontWeight: '600', color: Colors.primary },
+  // 계정 삭제
+  deleteAccountBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 12, marginBottom: 8 },
+  deleteAccountText: { fontSize: 13, color: Colors.textLight },
+  deleteModalHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
+  deleteWarning: { fontSize: 13, color: Colors.textGray, lineHeight: 20, marginBottom: 16, backgroundColor: Colors.expense + '08', padding: 12, borderRadius: 10 },
 });

@@ -17,7 +17,7 @@ const showAlert = (title, message) => {
 
 export default function LoginScreen({ initialMode }) {
   const { colors: Colors } = useTheme();
-  const { register, login, loginWithGoogle, loginWithApple } = useAuth();
+  const { register, login, loginWithGoogle, loginWithApple, resetPassword } = useAuth();
   const styles = getStyles(Colors);
 
   // initialMode가 'signup'이면 회원가입 탭으로 시작
@@ -56,6 +56,22 @@ export default function LoginScreen({ initialMode }) {
     const result = await loginWithApple();
     setSocialLoading(null);
     if (!result.success && result.message) setError(result.message);
+  };
+
+  const handleResetPassword = async () => {
+    if (!email.trim()) {
+      setError('비밀번호를 재설정할 이메일을 입력해 주세요.');
+      return;
+    }
+    setLoading(true);
+    const result = await resetPassword(email.trim());
+    setLoading(false);
+    if (result.success) {
+      setError('');
+      showAlert('이메일 발송 완료', '비밀번호 재설정 링크가 이메일로 발송되었습니다. 메일함을 확인해 주세요.');
+    } else {
+      setError(result.message);
+    }
   };
 
   return (
@@ -158,6 +174,13 @@ export default function LoginScreen({ initialMode }) {
                   )}
                 </LinearGradient>
               </TouchableOpacity>
+
+              {/* 비밀번호 찾기 (로그인 모드일 때만) */}
+              {isLogin && (
+                <TouchableOpacity style={styles.forgotBtn} onPress={handleResetPassword}>
+                  <Text style={styles.forgotText}>비밀번호를 잊으셨나요?</Text>
+                </TouchableOpacity>
+              )}
             </View>
 
             {/* 구분선 */}
@@ -279,4 +302,6 @@ const getStyles = (Colors) => StyleSheet.create({
   switchRow: { alignItems: 'center', paddingVertical: 16 },
   switchText: { fontSize: 14, color: Colors.textGray },
   switchLink: { color: Colors.primary, fontWeight: '700' },
+  forgotBtn: { alignItems: 'center', marginTop: 12 },
+  forgotText: { fontSize: 13, color: Colors.primary, fontWeight: '600' },
 });

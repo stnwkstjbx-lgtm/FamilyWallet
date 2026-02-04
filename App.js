@@ -1,9 +1,12 @@
 import React, { useState } from 'react';
-import { View, ActivityIndicator, Text, StyleSheet } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { ThemeProvider, useTheme } from './src/constants/ThemeContext';
 import { AuthProvider, useAuth } from './src/constants/AuthContext';
 import { WalletProvider, useWallet } from './src/constants/WalletContext';
+import { NetworkProvider } from './src/constants/NetworkContext';
+import ErrorBoundary from './src/components/ErrorBoundary';
+import SkeletonLoader from './src/components/SkeletonLoader';
 import TabNavigator from './src/navigation/TabNavigator';
 import LoginScreen from './src/screens/LoginScreen';
 import WelcomeScreen from './src/screens/WelcomeScreen';
@@ -22,14 +25,9 @@ function AppContent() {
   // 로그인 화면의 초기 모드 ('login' | 'signup')
   const [loginMode, setLoginMode] = useState('login');
 
-  // 로딩
+  // 로딩 → 스켈레톤 UI 사용
   if (authLoading || (user && walletLoading)) {
-    return (
-      <View style={[styles.loadingContainer, { backgroundColor: Colors.background }]}>
-        <ActivityIndicator size="large" color={Colors.primary} />
-        <Text style={[styles.loadingText, { color: Colors.textGray }]}>로딩 중...</Text>
-      </View>
-    );
+    return <SkeletonLoader />;
   }
 
   // 로그인 되어 있으면 가계부 흐름으로
@@ -79,13 +77,17 @@ function AppContent() {
 
 export default function App() {
   return (
-    <ThemeProvider>
-      <AuthProvider>
-        <WalletProvider>
-          <AppContent />
-        </WalletProvider>
-      </AuthProvider>
-    </ThemeProvider>
+    <ErrorBoundary>
+      <ThemeProvider>
+        <NetworkProvider>
+          <AuthProvider>
+            <WalletProvider>
+              <AppContent />
+            </WalletProvider>
+          </AuthProvider>
+        </NetworkProvider>
+      </ThemeProvider>
+    </ErrorBoundary>
   );
 }
 

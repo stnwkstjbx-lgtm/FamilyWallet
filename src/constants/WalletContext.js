@@ -23,6 +23,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../firebase/firebaseConfig';
 import { useAuth } from './AuthContext';
+import NotificationService from '../services/NotificationService';
 
 const WalletContext = createContext();
 export const useWallet = () => useContext(WalletContext);
@@ -247,10 +248,12 @@ export function WalletProvider({ children }) {
     }
   };
 
-  // 초대 링크 가져오기
+  // 초대 링크 가져오기 (딥링크 포함)
   const getInviteLink = () => {
     if (!currentWallet?.inviteCode) return '';
-    return `패밀리월렛 초대코드: ${currentWallet.inviteCode}`;
+    const code = currentWallet.inviteCode;
+    const deepLink = `familywallet://join?code=${code}`;
+    return `패밀리월렛에 초대합니다!\n\n초대코드: ${code}\n링크: ${deepLink}`;
   };
 
   // ══════════════════════════════════════════
@@ -351,6 +354,8 @@ export function WalletProvider({ children }) {
         status: 'pending',
         createdAt: new Date().toISOString(),
       });
+      // 관리자에게 알림
+      NotificationService.notifyAllowanceRequest({ userName: myNickname, amount, message });
       return { success: true };
     } catch (error) {
       return { success: false, message: error.message || '요청에 실패했습니다' };
@@ -381,6 +386,9 @@ export function WalletProvider({ children }) {
         respondedAt: new Date().toISOString(),
         respondedBy: user.uid,
       });
+
+      // 요청자에게 알림
+      NotificationService.notifyAllowanceResponse({ approved, amount: finalAmount });
 
       return { success: true };
     } catch (error) {
@@ -524,6 +532,18 @@ export function WalletProvider({ children }) {
   // Firestore 리스너
   // ══════════════════════════════════════════
 
+  // 푸시 알림 초기화
+  useEffect(() => {
+    if (user) {
+      NotificationService.registerForPushNotifications().then((token) => {
+        if (token) {
+          // 토큰을 사용자 문서에 저장 (추후 서버 푸시용)
+          setDoc(doc(db, 'users', user.uid), { pushToken: token }, { merge: true }).catch(() => {});
+        }
+      });
+    }
+  }, [user]);
+
   useEffect(() => {
     if (!user) {
       setWallets([]);
@@ -626,6 +646,9 @@ export function WalletProvider({ children }) {
     // ★ 용돈 요청 시스템
     requestAllowance,
     respondToAllowanceRequest,
+
+    // ★ 알림 서비스
+    notificationService: NotificationService,
   };
 
   return <WalletContext.Provider value={value}>{children}</WalletContext.Provider>;

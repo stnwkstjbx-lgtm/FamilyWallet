@@ -34,7 +34,8 @@ const ONBOARDING_DATA = [
     icon: 'wallet-outline',
     title: '가족 가계부',
     subtitle: '함께 관리하는 우리 가족 살림',
-    description: '초대코드 하나로 가족 모두가\n같은 가계부를 공유하고\n닉네임으로 쉽게 구분해요.',
+    description: '초대코드 하나로 가족 모두가\n같은 가계부를 공유해요.\n각자 닉네임으로 쉽게 구분!',
+    tip: '가계부는 최대 3개까지 만들 수 있어요',
     gradient: ['#6C63FF', '#897BFF'],
   },
   {
@@ -43,6 +44,7 @@ const ONBOARDING_DATA = [
     title: '공금 & 용돈',
     subtitle: '투명한 지출 관리',
     description: '가족 공금과 개인 용돈을\n분리해서 관리하고\n용돈 사용 리포트도 확인해요.',
+    tip: '관리자가 멤버별 월 용돈을 설정할 수 있어요',
     gradient: ['#FF6B6B', '#FF8E8E'],
   },
   {
@@ -51,6 +53,7 @@ const ONBOARDING_DATA = [
     title: '통계 & 분석',
     subtitle: '도넛 차트와 일별 추이',
     description: '카테고리별 지출 비율,\n전월 대비 변화, 일별 추이를\n직관적인 차트로 확인하세요.',
+    tip: '주간 지출 그래프를 탭하면 금액을 볼 수 있어요',
     gradient: ['#4ECDC4', '#6EE7DF'],
   },
   {
@@ -58,15 +61,17 @@ const ONBOARDING_DATA = [
     icon: 'calendar-outline',
     title: '캘린더 & 고정지출',
     subtitle: '일별 수입·지출 한눈에',
-    description: '캘린더에서 날짜별 금액을 확인하고\n고정지출은 매월 자동 기록해드려요.',
+    description: '캘린더에서 날짜별 금액을 확인하고\n고정지출과 고정수입은\n매월 자동으로 기록돼요.',
+    tip: '고정 내역은 설정에서 관리할 수 있어요',
     gradient: ['#FFD93D', '#FFE566'],
   },
   {
     id: '5',
-    icon: 'people-outline',
-    title: '가족과 함께',
-    subtitle: '최대 3개 가계부 운용',
-    description: '여러 가계부를 만들고 전환하며\n가족 구성원별 용돈 배분과\n지출 현황을 한눈에 관리해요.',
+    icon: 'shield-checkmark-outline',
+    title: '안전하고 편리하게',
+    subtitle: '보안 & 관리자 시스템',
+    description: '최대 3명의 관리자를 지정하고\n초대코드로 안전하게 가족을 초대.\n계정 관리도 간편해요.',
+    tip: '딥링크로 초대하면 바로 합류할 수 있어요',
     gradient: ['#2ECC71', '#58D68D'],
   },
 ];
@@ -169,6 +174,12 @@ export default function OnboardingScreen({ onFinish }) {
             <Text style={styles.cardSubtitle}>{item.subtitle}</Text>
             <View style={styles.divider} />
             <Text style={styles.cardDescription}>{item.description}</Text>
+            {item.tip && (
+              <View style={styles.tipBox}>
+                <Ionicons name="bulb-outline" size={14} color="rgba(255,255,255,0.9)" />
+                <Text style={styles.tipText}>{item.tip}</Text>
+              </View>
+            )}
           </View>
 
           {/* 카드 번호 */}
@@ -419,6 +430,21 @@ const styles = StyleSheet.create({
     color: '#fff',
     textAlign: 'center',
     lineHeight: 24,
+  },
+  tipBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 16,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  tipText: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.9)',
+    flex: 1,
   },
   cardNumber: {
     position: 'absolute',

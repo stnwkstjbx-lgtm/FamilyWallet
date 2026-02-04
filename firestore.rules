@@ -1,0 +1,80 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ══════════════════════════════════════
+    // 사용자 프로필
+    // ══════════════════════════════════════
+    match /users/{userId} {
+      // 본인만 읽기/쓰기 가능
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // ══════════════════════════════════════
+    // 가계부 (wallets)
+    // ══════════════════════════════════════
+    match /wallets/{walletId} {
+      // 멤버만 읽기 가능
+      allow read: if request.auth != null
+        && resource.data.members[request.auth.uid] != null;
+
+      // 생성: 로그인 사용자
+      allow create: if request.auth != null;
+
+      // 수정: 멤버만 가능
+      allow update: if request.auth != null
+        && resource.data.members[request.auth.uid] != null;
+
+      // 삭제: 관리자만 가능
+      allow delete: if request.auth != null
+        && resource.data.members[request.auth.uid].role == 'admin';
+
+      // 초대코드 조회용 (합류 시)
+      // - inviteCode 필드를 기준으로 쿼리할 때 허용
+      allow list: if request.auth != null;
+
+      // ── 트랜잭션 (서브컬렉션) ──
+      match /transactions/{txId} {
+        // 멤버만 읽기
+        allow read: if request.auth != null
+          && get(/databases/$(database)/documents/wallets/$(walletId)).data.members[request.auth.uid] != null;
+
+        // 멤버만 생성
+        allow create: if request.auth != null
+          && get(/databases/$(database)/documents/wallets/$(walletId)).data.members[request.auth.uid] != null;
+
+        // 관리자만 수정/삭제
+        allow update, delete: if request.auth != null
+          && get(/databases/$(database)/documents/wallets/$(walletId)).data.members[request.auth.uid].role == 'admin';
+      }
+
+      // ── 고정 지출/수입 (서브컬렉션) ──
+      match /fixedExpenses/{fixedId} {
+        allow read: if request.auth != null
+          && get(/databases/$(database)/documents/wallets/$(walletId)).data.members[request.auth.uid] != null;
+
+        allow create, update, delete: if request.auth != null
+          && get(/databases/$(database)/documents/wallets/$(walletId)).data.members[request.auth.uid].role == 'admin';
+      }
+
+      // ── 용돈 요청 (서브컬렉션) ──
+      match /allowanceRequests/{reqId} {
+        allow read: if request.auth != null
+          && get(/databases/$(database)/documents/wallets/$(walletId)).data.members[request.auth.uid] != null;
+
+        // 멤버 누구나 요청 생성 가능
+        allow create: if request.auth != null
+          && get(/databases/$(database)/documents/wallets/$(walletId)).data.members[request.auth.uid] != null;
+
+        // 관리자만 응답(수정) 가능
+        allow update: if request.auth != null
+          && get(/databases/$(database)/documents/wallets/$(walletId)).data.members[request.auth.uid].role == 'admin';
+      }
+    }
+
+    // 그 외 모든 문서 접근 차단
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

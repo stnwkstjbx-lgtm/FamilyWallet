@@ -2,6 +2,7 @@
   "expo": {
     "name": "FamilyWallet",
     "slug": "FamilyWallet",
+    "scheme": "familywallet",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
