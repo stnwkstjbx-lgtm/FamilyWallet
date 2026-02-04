@@ -272,50 +272,99 @@ export default function HomeScreen() {
             </View>
           </View>
 
-          {/* 잔액 - 그라데이션 안에서 큰 금액 표시 */}
+          {/* 그라데이션 안 메인 금액 */}
           <View style={styles.balanceSection}>
-            <Text style={styles.balanceLabel}>이번 달 잔액</Text>
-            <Text style={styles.balanceAmount}>
-              {balance < 0 ? '-' : '+'}{formatMoney(balance)}
-            </Text>
+            {isAdmin ? (
+              <>
+                <Text style={styles.balanceLabel}>이번 달 잔액</Text>
+                <Text style={styles.balanceAmount}>
+                  {balance < 0 ? '-' : '+'}{formatMoney(balance)}
+                </Text>
+              </>
+            ) : (
+              <>
+                <Text style={styles.balanceLabel}>{myAllowance > 0 ? '내 용돈 잔액' : '이번 달 내 지출'}</Text>
+                <Text style={styles.balanceAmount}>
+                  {myAllowance > 0
+                    ? (myAllowanceRemain < 0 ? '-' : '') + formatMoney(myAllowanceRemain)
+                    : formatMoney(myPersonalExpense)
+                  }
+                </Text>
+              </>
+            )}
           </View>
         </LinearGradient>
 
         {/* ===== 대시보드 카드들 (그라데이션 위에 플로팅) ===== */}
         <View style={styles.dashboardContainer}>
-          {/* 수입/지출 요약 카드 */}
-          <View style={styles.summaryRow}>
-            <View style={styles.summaryCard}>
-              <View style={[styles.summaryIconWrap, { backgroundColor: Colors.income + '15' }]}>
-                <Ionicons name="trending-up" size={18} color={Colors.income} />
-              </View>
-              <Text style={styles.summaryCardLabel}>수입</Text>
-              <Text style={[styles.summaryCardAmount, { color: Colors.income }]}>{formatMoney(totalIncome)}</Text>
-            </View>
-
-            <View style={styles.summaryDivider} />
-
-            <View style={styles.summaryCard}>
-              <View style={[styles.summaryIconWrap, { backgroundColor: Colors.expense + '15' }]}>
-                <Ionicons name="trending-down" size={18} color={Colors.expense} />
-              </View>
-              <Text style={styles.summaryCardLabel}>지출</Text>
-              <Text style={[styles.summaryCardAmount, { color: Colors.expense }]}>{formatMoney(totalExpense)}</Text>
-              <View style={styles.fundBreakdown}>
-                <View style={styles.fundBreakdownItem}>
-                  <View style={[styles.fundDot, { backgroundColor: Colors.primary }]} />
-                  <Text style={styles.fundBreakdownText}>공금 {formatMoney(sharedExpense)}</Text>
+          {isAdmin ? (
+            /* ===== 관리자: 수입/지출 전체 요약 ===== */
+            <View style={styles.summaryRow}>
+              <View style={styles.summaryCard}>
+                <View style={[styles.summaryIconWrap, { backgroundColor: Colors.income + '15' }]}>
+                  <Ionicons name="trending-up" size={18} color={Colors.income} />
                 </View>
-                <View style={styles.fundBreakdownItem}>
-                  <View style={[styles.fundDot, { backgroundColor: Colors.personal }]} />
-                  <Text style={styles.fundBreakdownText}>용돈 {formatMoney(totalAllowance)}</Text>
+                <Text style={styles.summaryCardLabel}>수입</Text>
+                <Text style={[styles.summaryCardAmount, { color: Colors.income }]}>{formatMoney(totalIncome)}</Text>
+              </View>
+
+              <View style={styles.summaryDivider} />
+
+              <View style={styles.summaryCard}>
+                <View style={[styles.summaryIconWrap, { backgroundColor: Colors.expense + '15' }]}>
+                  <Ionicons name="trending-down" size={18} color={Colors.expense} />
+                </View>
+                <Text style={styles.summaryCardLabel}>지출</Text>
+                <Text style={[styles.summaryCardAmount, { color: Colors.expense }]}>{formatMoney(totalExpense)}</Text>
+                <View style={styles.fundBreakdown}>
+                  <View style={styles.fundBreakdownItem}>
+                    <View style={[styles.fundDot, { backgroundColor: Colors.primary }]} />
+                    <Text style={styles.fundBreakdownText}>공금 {formatMoney(sharedExpense)}</Text>
+                  </View>
+                  <View style={styles.fundBreakdownItem}>
+                    <View style={[styles.fundDot, { backgroundColor: Colors.personal }]} />
+                    <Text style={styles.fundBreakdownText}>용돈 {formatMoney(totalAllowance)}</Text>
+                  </View>
                 </View>
               </View>
             </View>
-          </View>
+          ) : (
+            /* ===== 일반 멤버: 내 용돈 중심 요약 ===== */
+            <View style={styles.memberSummaryCard}>
+              {myAllowance > 0 ? (
+                <>
+                  <View style={styles.memberAllowanceHeader}>
+                    <View style={styles.memberAllowanceInfo}>
+                      <Text style={styles.memberAllowanceLabel}>이번 달 용돈</Text>
+                      <Text style={styles.memberAllowanceTotal}>{formatMoney(myAllowance)}</Text>
+                    </View>
+                    <View style={styles.memberAllowanceInfo}>
+                      <Text style={styles.memberAllowanceLabel}>사용 금액</Text>
+                      <Text style={[styles.memberAllowanceTotal, { color: Colors.expense }]}>{formatMoney(myPersonalExpense)}</Text>
+                    </View>
+                  </View>
+                  <View style={styles.memberProgressBar}>
+                    <View style={[styles.memberProgressFill, {
+                      width: `${myAllowancePct}%`,
+                      backgroundColor: myAllowancePct >= 90 ? Colors.expense : myAllowancePct >= 70 ? Colors.warning : Colors.income
+                    }]} />
+                  </View>
+                  <Text style={styles.memberProgressText}>{myAllowancePct}% 사용</Text>
+                </>
+              ) : (
+                <View style={styles.memberNoAllowance}>
+                  <View style={[styles.summaryIconWrap, { backgroundColor: Colors.personal + '15' }]}>
+                    <Ionicons name="wallet-outline" size={20} color={Colors.personal} />
+                  </View>
+                  <Text style={styles.memberNoAllowanceText}>아직 용돈이 설정되지 않았어요</Text>
+                  <Text style={styles.memberNoAllowanceSubText}>용돈 탭에서 관리자에게 요청할 수 있어요</Text>
+                </View>
+              )}
+            </View>
+          )}
 
-          {/* 내 용돈 카드 */}
-          {myAllowance > 0 && (
+          {/* 관리자용: 내 용돈 카드 (관리자도 용돈이 있을 수 있음) */}
+          {isAdmin && myAllowance > 0 && (
             <View style={styles.myAllowanceCard}>
               <View style={styles.myAllowanceHeader}>
                 <View style={styles.myAllowanceLeft}>
@@ -722,6 +771,19 @@ const getStyles = (Colors) => StyleSheet.create({
   fundBreakdownItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   fundDot: { width: 6, height: 6, borderRadius: 3 },
   fundBreakdownText: { fontSize: 10, color: Colors.textGray },
+
+  // 일반 멤버 요약 카드
+  memberSummaryCard: { backgroundColor: Colors.surface, borderRadius: 20, padding: 20, marginBottom: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.12, shadowRadius: 16, elevation: 6 },
+  memberAllowanceHeader: { flexDirection: 'row', justifyContent: 'space-around', marginBottom: 16 },
+  memberAllowanceInfo: { alignItems: 'center' },
+  memberAllowanceLabel: { fontSize: 12, fontWeight: '600', color: Colors.textGray, marginBottom: 4 },
+  memberAllowanceTotal: { fontSize: 20, fontWeight: '800', color: Colors.textBlack },
+  memberProgressBar: { height: 8, backgroundColor: Colors.background, borderRadius: 4, overflow: 'hidden' },
+  memberProgressFill: { height: 8, borderRadius: 4 },
+  memberProgressText: { fontSize: 12, fontWeight: '600', color: Colors.textGray, textAlign: 'right', marginTop: 6 },
+  memberNoAllowance: { alignItems: 'center', paddingVertical: 8, gap: 8 },
+  memberNoAllowanceText: { fontSize: 15, fontWeight: '600', color: Colors.textBlack },
+  memberNoAllowanceSubText: { fontSize: 13, color: Colors.textGray },
 
   // 내 용돈
   myAllowanceCard: { backgroundColor: Colors.surface, borderRadius: 16, padding: 16, marginBottom: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 10, elevation: 3 },
