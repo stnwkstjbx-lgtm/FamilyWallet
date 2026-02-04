@@ -9,6 +9,8 @@ import { useTheme } from '../constants/ThemeContext';
 import { useAuth } from '../constants/AuthContext';
 import { useWallet } from '../constants/WalletContext';
 
+const MODAL_TRANSITION_MS = 350; // 모달 닫힘 애니메이션 대기 시간
+
 const showAlert = (title, message, buttons) => {
   if (Platform.OS === 'web') {
     if (buttons) {
@@ -48,7 +50,7 @@ export default function WalletSelectScreen() {
     if (!walletName.trim()) { showAlert('알림', '가계부 이름을 입력해 주세요!'); return; }
     setShowCreateModal(false);
     setFlowType('create');
-    setTimeout(() => setShowNicknameModal(true), 300);
+    setTimeout(() => setShowNicknameModal(true), MODAL_TRANSITION_MS);
   };
 
   // Step 1 → Step 2: 초대코드 입력 후 닉네임 모달로 이동
@@ -56,7 +58,7 @@ export default function WalletSelectScreen() {
     if (!inviteCode.trim() || inviteCode.trim().length < 6) { showAlert('알림', '초대코드 6자리를 입력해 주세요!'); return; }
     setShowJoinModal(false);
     setFlowType('join');
-    setTimeout(() => setShowNicknameModal(true), 300);
+    setTimeout(() => setShowNicknameModal(true), MODAL_TRANSITION_MS);
   };
 
   // Step 2: 닉네임 입력 후 최종 생성/합류
@@ -94,9 +96,9 @@ export default function WalletSelectScreen() {
     setShowNicknameModal(false);
     setNickname('');
     if (flowType === 'create') {
-      setTimeout(() => setShowCreateModal(true), 300);
+      setTimeout(() => setShowCreateModal(true), MODAL_TRANSITION_MS);
     } else {
-      setTimeout(() => setShowJoinModal(true), 300);
+      setTimeout(() => setShowJoinModal(true), MODAL_TRANSITION_MS);
     }
   };
 

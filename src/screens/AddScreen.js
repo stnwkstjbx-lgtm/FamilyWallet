@@ -62,6 +62,7 @@ export default function AddScreen() {
     if (!amount || amount === '0') { showAlert('알림', '금액을 입력해 주세요!'); return; }
     if (!selectedCategory) { showAlert('알림', '카테고리를 선택해 주세요!'); return; }
     if (!currentWalletId) { showAlert('알림', '가계부가 선택되지 않았습니다.'); return; }
+    if (!user?.uid) { showAlert('오류', '로그인 정보를 확인할 수 없습니다. 다시 로그인해 주세요.'); return; }
 
     try {
       const txData = {
@@ -70,7 +71,7 @@ export default function AddScreen() {
         category: selectedCategory,
         memo,
         member: myWalletName,
-        userId: user?.uid || '',
+        userId: user.uid,
         date: new Date().toISOString(),
         createdAt: new Date().toISOString(),
       };
@@ -89,7 +90,7 @@ export default function AddScreen() {
 
       setAmount(''); setSelectedCategory(null); setMemo('');
     } catch (error) {
-      console.error('저장 실패:', error);
+      if (__DEV__) console.error('저장 실패:', error);
       showAlert('오류', '저장에 실패했습니다.');
     }
   };
@@ -110,7 +111,7 @@ export default function AddScreen() {
       showAlert('등록 완료! ✅', `고정 ${label} "${fixedName.trim()}"이 등록되었습니다.\n매월 ${day}일에 자동 기록됩니다.`);
       setAmount(''); setFixedName(''); setFixedDay(''); setFixedType('expense');
     } catch (error) {
-      console.error('저장 실패:', error);
+      if (__DEV__) console.error('저장 실패:', error);
       showAlert('오류', '저장에 실패했습니다.');
     }
   };

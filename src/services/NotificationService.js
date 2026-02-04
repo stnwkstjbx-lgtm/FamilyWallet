@@ -17,7 +17,7 @@ class NotificationService {
   async registerForPushNotifications() {
     if (Platform.OS === 'web') return null;
     if (!Device.isDevice) {
-      console.log('푸시 알림은 실제 기기에서만 동작합니다.');
+      if (__DEV__) console.log('푸시 알림은 실제 기기에서만 동작합니다.');
       return null;
     }
 
@@ -31,7 +31,7 @@ class NotificationService {
       }
 
       if (finalStatus !== 'granted') {
-        console.log('푸시 알림 권한이 거부되었습니다.');
+        if (__DEV__) console.log('푸시 알림 권한이 거부되었습니다.');
         return null;
       }
 
@@ -64,7 +64,7 @@ class NotificationService {
 
       return token.data;
     } catch (error) {
-      console.error('푸시 토큰 발급 실패:', error);
+      if (__DEV__) console.error('푸시 토큰 발급 실패:', error);
       return null;
     }
   }
@@ -82,7 +82,7 @@ class NotificationService {
         trigger: null, // 즉시 발송
       });
     } catch (error) {
-      console.error('로컬 알림 발송 실패:', error);
+      if (__DEV__) console.error('로컬 알림 발송 실패:', error);
     }
   }
 

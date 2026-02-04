@@ -45,7 +45,7 @@ export function AuthProvider({ children }) {
         setUserProfile(userDoc.data());
       }
     } catch (error) {
-      console.log('프로필 로드 실패:', error);
+      if (__DEV__) console.warn('프로필 로드 실패:', error);
     }
   };
 
@@ -68,7 +68,7 @@ export function AuthProvider({ children }) {
         setUserProfile(userDoc.data());
       }
     } catch (error) {
-      console.error('사용자 문서 생성 실패:', error);
+      if (__DEV__) console.error('사용자 문서 생성 실패:', error);
     }
   };
 
@@ -109,7 +109,7 @@ export function AuthProvider({ children }) {
       await ensureUserDoc(result.user, result.user.displayName);
       return { success: true };
     } catch (error) {
-      console.error('Google 로그인 실패:', error);
+      if (__DEV__) console.error('Google 로그인 실패:', error);
       if (error.code === 'auth/popup-closed-by-user') {
         return { success: false, message: '로그인이 취소되었습니다.' };
       }
@@ -127,7 +127,7 @@ export function AuthProvider({ children }) {
       await ensureUserDoc(result.user, result.user.displayName);
       return { success: true };
     } catch (error) {
-      console.error('Apple 로그인 실패:', error);
+      if (__DEV__) console.error('Apple 로그인 실패:', error);
       if (error.code === 'auth/popup-closed-by-user') {
         return { success: false, message: '로그인이 취소되었습니다.' };
       }
@@ -213,7 +213,7 @@ export function AuthProvider({ children }) {
       setUser(null);
       setUserProfile(null);
     } catch (error) {
-      console.error('로그아웃 실패:', error);
+      if (__DEV__) console.error('로그아웃 실패:', error);
     }
   };
 
@@ -224,7 +224,7 @@ export function AuthProvider({ children }) {
       await setDoc(doc(db, 'users', user.uid), updates, { merge: true });
       setUserProfile((prev) => ({ ...prev, ...updates }));
     } catch (error) {
-      console.error('프로필 업데이트 실패:', error);
+      if (__DEV__) console.error('프로필 업데이트 실패:', error);
     }
   };
 

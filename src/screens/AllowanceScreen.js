@@ -70,6 +70,8 @@ export default function AllowanceScreen() {
   const [showApproveModal, setShowApproveModal] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [approveAmount, setApproveAmount] = useState('');
+  const [approveLoading, setApproveLoading] = useState(false);
+  const [setAllowanceLoading, setSetAllowanceLoading] = useState(false);
 
   // 관리자: 용돈 설정 모달
   const [showSetAllowanceModal, setShowSetAllowanceModal] = useState(false);
@@ -283,12 +285,15 @@ export default function AllowanceScreen() {
   // ───── 관리자: 요청 승인 ─────
   const handleApproveRequest = async () => {
     if (!selectedRequest) return;
+    if (!isAdmin) { showAlert('권한 없음', '관리자만 요청을 승인할 수 있습니다.'); return; }
     const amount = parseInt(approveAmount);
     if (!amount || amount <= 0) {
       showAlert('알림', '금액을 입력해주세요');
       return;
     }
+    setApproveLoading(true);
     const result = await respondToAllowanceRequest(selectedRequest.id, true, amount);
+    setApproveLoading(false);
     if (result.success) {
       setShowApproveModal(false);
       setSelectedRequest(null);
@@ -301,6 +306,7 @@ export default function AllowanceScreen() {
 
   // ───── 관리자: 요청 거절 ─────
   const handleRejectRequest = async (req) => {
+    if (!isAdmin) { showAlert('권한 없음', '관리자만 요청을 거절할 수 있습니다.'); return; }
     showAlert('요청 거절', `${req.userName}님의 요청을 거절할까요?`, [
       { text: '취소' },
       {
@@ -317,18 +323,22 @@ export default function AllowanceScreen() {
   // ───── 관리자: 용돈 직접 설정 ─────
   const handleSetAllowance = async () => {
     if (!selectedMember) return;
+    if (!isAdmin) { showAlert('권한 없음', '관리자만 용돈을 설정할 수 있습니다.'); return; }
     const amt = parseInt(setAllowanceAmount) || 0;
+    setSetAllowanceLoading(true);
     try {
       await updateDoc(doc(db, 'wallets', currentWalletId), {
         [`members.${selectedMember.uid}.allowance`]: amt,
         [`members.${selectedMember.uid}.monthlyAllowance`]: amt,
       });
+      setSetAllowanceLoading(false);
       showAlert('설정 완료', `${selectedMember.name}님의 월 용돈: ${amt.toLocaleString('ko-KR')}원`);
       setShowSetAllowanceModal(false);
       setSelectedMember(null);
       setSetAllowanceAmount('');
     } catch (e) {
-      showAlert('오류', e.message);
+      setSetAllowanceLoading(false);
+      showAlert('오류', '용돈 설정에 실패했습니다.');
     }
   };
 
@@ -919,10 +929,13 @@ export default function AllowanceScreen() {
                 <Text style={[styles.modalBtnText, { color: colors.textGray }]}>취소</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.modalBtn, { backgroundColor: colors.primary }]}
+                style={[styles.modalBtn, { backgroundColor: colors.primary, opacity: approveLoading ? 0.6 : 1 }]}
                 onPress={handleApproveRequest}
+                disabled={approveLoading}
               >
-                <Text style={[styles.modalBtnText, { color: '#fff' }]}>승인하기</Text>
+                <Text style={[styles.modalBtnText, { color: '#fff' }]}>
+                  {approveLoading ? '처리 중...' : '승인하기'}
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -961,10 +974,13 @@ export default function AllowanceScreen() {
                 <Text style={[styles.modalBtnText, { color: colors.textGray }]}>취소</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.modalBtn, { backgroundColor: colors.primary }]}
+                style={[styles.modalBtn, { backgroundColor: colors.primary, opacity: setAllowanceLoading ? 0.6 : 1 }]}
                 onPress={handleSetAllowance}
+                disabled={setAllowanceLoading}
               >
-                <Text style={[styles.modalBtnText, { color: '#fff' }]}>설정</Text>
+                <Text style={[styles.modalBtnText, { color: '#fff' }]}>
+                  {setAllowanceLoading ? '설정 중...' : '설정'}
+                </Text>
               </TouchableOpacity>
             </View>
           </View>

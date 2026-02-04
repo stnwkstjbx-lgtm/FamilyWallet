@@ -23,7 +23,9 @@ function parseInviteCode(url) {
       const match = url.match(/code=([A-Za-z0-9]+)/);
       return match ? match[1] : null;
     }
-  } catch { }
+  } catch (e) {
+    if (__DEV__) console.warn('딥링크 파싱 실패:', e);
+  }
   return null;
 }
 
@@ -59,9 +61,9 @@ function AppContent() {
 
   // 로그인 후 대기 중인 초대코드 자동 처리
   useEffect(() => {
-    if (!user || !pendingInviteCode || walletLoading) return;
+    if (!user || !pendingInviteCode || walletLoading || authLoading) return;
 
-    const showAlert = (title, msg) => {
+    const showAlertMsg = (title, msg) => {
       if (Platform.OS === 'web') window.alert(`${title}\n\n${msg}`);
       else Alert.alert(title, msg);
     };
@@ -71,15 +73,15 @@ function AppContent() {
       const nickname = user.displayName || '사용자';
       const result = await joinWallet(pendingInviteCode, nickname);
       if (result.success) {
-        showAlert('합류 완료!', `"${result.walletName}" 가계부에 합류했습니다.`);
+        showAlertMsg('합류 완료!', `"${result.walletName}" 가계부에 합류했습니다.`);
       } else {
-        showAlert('합류 실패', result.message || '초대코드가 유효하지 않습니다.');
+        showAlertMsg('합류 실패', result.message || '초대코드가 유효하지 않습니다.');
       }
       setPendingInviteCode(null);
     };
 
     handleJoin();
-  }, [user, pendingInviteCode, walletLoading]);
+  }, [user, pendingInviteCode, walletLoading, authLoading]);
 
   // 로딩 → 스켈레톤 UI
   if (authLoading || (user && walletLoading)) {

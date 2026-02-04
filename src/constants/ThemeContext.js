@@ -87,7 +87,9 @@ export function ThemeProvider({ children }) {
             setIsDark(userDoc.data().isDark);
           }
         }
-      } catch (error) {}
+      } catch (error) {
+        if (__DEV__) console.warn('테마 로드 실패:', error);
+      }
       setThemeLoaded(true);
     };
     loadTheme();
@@ -109,7 +111,9 @@ export function ThemeProvider({ children }) {
       if (currentUser) {
         await updateDoc(doc(db, 'users', currentUser.uid), { isDark: newValue });
       }
-    } catch (error) {}
+    } catch (error) {
+      if (__DEV__) console.warn('테마 저장 실패:', error);
+    }
   };
 
   const colors = isDark ? darkColors : lightColors;

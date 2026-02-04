@@ -142,8 +142,14 @@ export function WalletProvider({ children }) {
     }
   };
 
-  // 가계부 전환
+  // 가계부 전환 (유효성 검증 포함)
   const switchWallet = (walletId) => {
+    if (!walletId) return;
+    const exists = wallets.some((w) => w.id === walletId);
+    if (!exists) {
+      if (__DEV__) console.warn('switchWallet: 유효하지 않은 가계부 ID:', walletId);
+      return;
+    }
     setCurrentWalletId(walletId);
   };
 
@@ -272,6 +278,7 @@ export function WalletProvider({ children }) {
 
   const addTransaction = async (transactionData) => {
     if (!currentWalletId || !user) return;
+    if (!transactionData?.amount || typeof transactionData.amount !== 'number' || transactionData.amount <= 0) return;
     const txRef = collection(db, 'wallets', currentWalletId, 'transactions');
     const myNickname = currentWallet?.members?.[user.uid]?.name || user.displayName || user.email;
     await addDoc(txRef, {
@@ -290,6 +297,9 @@ export function WalletProvider({ children }) {
     if (!currentWalletId || !user) return;
     if (!isAdmin) {
       throw new Error('관리자만 용돈을 배분할 수 있어요');
+    }
+    if (!memberId || typeof amount !== 'number' || amount < 0) {
+      throw new Error('유효하지 않은 용돈 배분 데이터입니다');
     }
 
     const now = new Date();
