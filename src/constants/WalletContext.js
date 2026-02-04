@@ -37,7 +37,7 @@ export function WalletProvider({ children }) {
   const [wallets, setWallets] = useState([]);
   const [currentWalletId, setCurrentWalletId] = useState(null);
   const [currentWallet, setCurrentWallet] = useState(null);
-  const [transactions, setTransactions] = useState([]);
+  const [rawTransactions, setRawTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
 
   // ══════════════════════════════════════════
@@ -49,6 +49,34 @@ export function WalletProvider({ children }) {
     if (!user || !currentWallet) return false;
     return currentWallet.members?.[user.uid]?.role === 'admin';
   }, [user, currentWallet]);
+
+  // ★ 비관리자용: 본인 트랜잭션만 필터링
+  const transactions = useMemo(() => {
+    if (isAdmin) return rawTransactions;
+    if (!user) return [];
+    return rawTransactions.filter((tx) =>
+      tx.userId === user.uid ||
+      tx.memberId === user.uid ||
+      (tx.fundType === 'allowance_allocation' && tx.allocatedTo === user.uid)
+    );
+  }, [rawTransactions, isAdmin, user]);
+
+  // ★ 비관리자용: 다른 멤버의 용돈 정보 숨기기
+  const sanitizedWallet = useMemo(() => {
+    if (!currentWallet || isAdmin) return currentWallet;
+    if (!user) return currentWallet;
+    const members = currentWallet.members || {};
+    const sanitized = {};
+    for (const [uid, data] of Object.entries(members)) {
+      if (uid === user.uid) {
+        sanitized[uid] = data; // 본인 데이터는 그대로
+      } else {
+        // 다른 멤버: 이름과 역할만 노출, 용돈 금액 숨김
+        sanitized[uid] = { name: data.name, role: data.role };
+      }
+    }
+    return { ...currentWallet, members: sanitized };
+  }, [currentWallet, isAdmin, user]);
 
   // 유저의 가계부 목록 (wallets와 동일, 호환성 위해)
   const userWallets = wallets;
@@ -521,9 +549,11 @@ export function WalletProvider({ children }) {
     };
   }, [user, transactions, getMyAllowanceForMonth, getMyPersonalSpendingForMonth]);
 
+  // ★ 관리자 전용: 가족 전체 지출/수입 조회
   const getFamilyTotalExpense = useCallback(
     (yearMonth) => {
-      return transactions
+      if (!isAdmin) return 0;
+      return rawTransactions
         .filter((tx) => {
           if (tx.type !== 'expense') return false;
           if (tx.fundType === 'personal') return false;
@@ -532,12 +562,13 @@ export function WalletProvider({ children }) {
         })
         .reduce((sum, tx) => sum + (tx.amount || 0), 0);
     },
-    [transactions]
+    [rawTransactions, isAdmin]
   );
 
   const getFamilyTotalIncome = useCallback(
     (yearMonth) => {
-      return transactions
+      if (!isAdmin) return 0;
+      return rawTransactions
         .filter((tx) => {
           if (tx.type !== 'income') return false;
           const txMonth = tx.date?.slice(0, 7);
@@ -545,7 +576,7 @@ export function WalletProvider({ children }) {
         })
         .reduce((sum, tx) => sum + (tx.amount || 0), 0);
     },
-    [transactions]
+    [rawTransactions, isAdmin]
   );
 
   // ══════════════════════════════════════════
@@ -608,7 +639,7 @@ export function WalletProvider({ children }) {
 
   useEffect(() => {
     if (!currentWalletId) {
-      setTransactions([]);
+      setRawTransactions([]);
       return;
     }
 
@@ -617,7 +648,7 @@ export function WalletProvider({ children }) {
 
     const unsub = onSnapshot(q, (snap) => {
       const txList = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      setTransactions(txList);
+      setRawTransactions(txList);
     });
 
     return () => unsub();
@@ -632,7 +663,7 @@ export function WalletProvider({ children }) {
     wallets,
     userWallets,  // SettingsScreen 호환
     currentWalletId,
-    currentWallet,
+    currentWallet: sanitizedWallet,  // ★ 비관리자는 다른 멤버 용돈 정보 숨김
     transactions,
     loading,
     isAdmin,      // ★ HomeScreen, SettingsScreen에서 사용

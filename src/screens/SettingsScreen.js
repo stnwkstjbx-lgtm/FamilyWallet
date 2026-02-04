@@ -51,34 +51,40 @@ export default function SettingsScreen() {
 
   useEffect(() => {
     if (!currentWalletId) return;
+    const unsubs = [];
 
-    const unsub1 = onSnapshot(query(collection(db, 'wallets', currentWalletId, 'transactions')), (snapshot) => {
-      const now = new Date();
-      let inc = 0, exp = 0;
-      const byUser = {};
-      snapshot.docs.forEach((d) => {
-        const data = d.data();
-        const date = new Date(data.date);
-        if (date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear()) {
-          if (data.type === 'income') inc += data.amount;
-          if (data.type === 'expense') {
-            exp += data.amount;
-            const uid = data.userId || 'unknown';
-            byUser[uid] = (byUser[uid] || 0) + data.amount;
+    // ★ 관리자만 전체 트랜잭션 통계 조회 (비관리자는 예산 현황을 보지 않으므로 불필요)
+    if (isAdmin) {
+      const unsub1 = onSnapshot(query(collection(db, 'wallets', currentWalletId, 'transactions')), (snapshot) => {
+        const now = new Date();
+        let inc = 0, exp = 0;
+        const byUser = {};
+        snapshot.docs.forEach((d) => {
+          const data = d.data();
+          const date = new Date(data.date);
+          if (date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear()) {
+            if (data.type === 'income') inc += data.amount;
+            if (data.type === 'expense') {
+              exp += data.amount;
+              const uid = data.userId || 'unknown';
+              byUser[uid] = (byUser[uid] || 0) + data.amount;
+            }
           }
-        }
+        });
+        setTotalIncome(inc); setTotalExpense(exp); setUserExpenses(byUser);
       });
-      setTotalIncome(inc); setTotalExpense(exp); setUserExpenses(byUser);
-    });
+      unsubs.push(unsub1);
+    }
 
     const unsub2 = onSnapshot(query(collection(db, 'wallets', currentWalletId, 'fixedExpenses')), (snapshot) => {
       const list = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
       list.sort((a, b) => (a.day || 1) - (b.day || 1));
       setFixedExpenses(list);
     });
+    unsubs.push(unsub2);
 
-    return () => { unsub1(); unsub2(); };
-  }, [currentWalletId]);
+    return () => unsubs.forEach((u) => u());
+  }, [currentWalletId, isAdmin]);
 
   const members = currentWallet?.members ? Object.entries(currentWallet.members).map(([uid, data]) => ({ uid, ...data })) : [];
   const totalAllowance = members.reduce((s, m) => s + (m.allowance || 0), 0);

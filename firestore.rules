@@ -57,6 +57,16 @@ service cloud.firestore {
           && get(/databases/$(database)/documents/wallets/$(walletId)).data.members[request.auth.uid].role == 'admin';
       }
 
+      // ── 관리자 전용 통계 (서브컬렉션) ──
+      match /adminStats/{statId} {
+        // 관리자만 읽기/쓰기
+        allow read: if request.auth != null
+          && get(/databases/$(database)/documents/wallets/$(walletId)).data.members[request.auth.uid].role == 'admin';
+
+        allow write: if request.auth != null
+          && get(/databases/$(database)/documents/wallets/$(walletId)).data.members[request.auth.uid].role == 'admin';
+      }
+
       // ── 용돈 요청 (서브컬렉션) ──
       match /allowanceRequests/{reqId} {
         allow read: if request.auth != null
