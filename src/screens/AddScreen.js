@@ -12,6 +12,15 @@ import { EXPENSE_CATEGORIES, INCOME_CATEGORIES } from '../constants/categories';
 import { db } from '../firebase/firebaseConfig';
 import { collection, addDoc } from 'firebase/firestore';
 
+const FIXED_PRESETS = [
+  { name: '월세', icon: 'home-outline' },
+  { name: '통신비', icon: 'phone-portrait-outline' },
+  { name: '보험료', icon: 'shield-checkmark-outline' },
+  { name: '구독료', icon: 'tv-outline' },
+  { name: '교육비', icon: 'school-outline' },
+  { name: '관리비', icon: 'business-outline' },
+];
+
 const showAlert = (title, message) => {
   if (Platform.OS === 'web') { window.alert(`${title}\n\n${message}`); }
   else { Alert.alert(title, message); }
@@ -20,14 +29,18 @@ const showAlert = (title, message) => {
 export default function AddScreen() {
   const { colors: Colors } = useTheme();
   const { user, userProfile } = useAuth();
-  const { currentWalletId, currentWallet } = useWallet();
+  const { currentWalletId, currentWallet, isAdmin } = useWallet();
   const styles = getStyles(Colors);
 
-  const [type, setType] = useState('expense');
+  const [type, setType] = useState('expense'); // 'expense', 'income', 'fixed'
   const [amount, setAmount] = useState('');
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [memo, setMemo] = useState('');
-  const [fundType, setFundType] = useState('shared'); // 'shared' = 공금, 'personal' = 용돈
+  const [fundType, setFundType] = useState('shared');
+
+  // 고정지출용
+  const [fixedName, setFixedName] = useState('');
+  const [fixedDay, setFixedDay] = useState('');
 
   useEffect(() => { setSelectedCategory(null); }, [type]);
 
@@ -72,6 +85,25 @@ export default function AddScreen() {
     }
   };
 
+  const handleSaveFixed = async () => {
+    if (!fixedName.trim()) { showAlert('알림', '항목명을 입력해 주세요!'); return; }
+    if (!amount || amount === '0') { showAlert('알림', '금액을 입력해 주세요!'); return; }
+    if (!fixedDay) { showAlert('알림', '날짜를 입력해 주세요!'); return; }
+    const day = parseInt(fixedDay);
+    if (day < 1 || day > 31) { showAlert('알림', '1~31 사이 날짜를 입력해 주세요!'); return; }
+    if (!currentWalletId) { showAlert('알림', '가계부가 선택되지 않았습니다.'); return; }
+    try {
+      await addDoc(collection(db, 'wallets', currentWalletId, 'fixedExpenses'), {
+        name: fixedName.trim(), amount: parseInt(amount), day, lastRecordedMonth: '', createdAt: new Date().toISOString(),
+      });
+      showAlert('등록 완료! ✅', `고정 지출 "${fixedName.trim()}"이 등록되었습니다.\n매월 ${day}일에 자동 기록됩니다.`);
+      setAmount(''); setFixedName(''); setFixedDay('');
+    } catch (error) {
+      console.error('저장 실패:', error);
+      showAlert('오류', '저장에 실패했습니다.');
+    }
+  };
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" />
@@ -87,7 +119,7 @@ export default function AddScreen() {
 
           <View style={styles.formContainer}>
 
-            {/* 수입/지출 토글 */}
+            {/* 수입/지출/고정지출 토글 */}
             <View style={styles.typeCard}>
               <TouchableOpacity
                 style={[styles.typeButton, type === 'expense' && styles.typeButtonActiveExpense]}
@@ -103,132 +135,221 @@ export default function AddScreen() {
                 <Ionicons name="arrow-down-circle" size={20} color={type === 'income' ? '#FFFFFF' : Colors.income} />
                 <Text style={[styles.typeButtonText, type === 'income' && { color: '#FFFFFF' }]}>수입</Text>
               </TouchableOpacity>
-            </View>
-
-            {/* 공금/용돈 선택 (지출일 때만) */}
-            {type === 'expense' && (
-              <View style={styles.fundTypeCard}>
-                <Text style={styles.fundTypeLabel}>💳 지출 출처</Text>
-                <View style={styles.fundTypeRow}>
-                  <TouchableOpacity
-                    style={[styles.fundTypeBtn, fundType === 'shared' && styles.fundTypeBtnActiveShared]}
-                    onPress={() => setFundType('shared')}
-                  >
-                    <View style={[styles.fundTypeIcon, { backgroundColor: fundType === 'shared' ? '#FFFFFF30' : Colors.primary + '15' }]}>
-                      <Ionicons name="people" size={18} color={fundType === 'shared' ? '#FFFFFF' : Colors.primary} />
-                    </View>
-                    <View style={styles.fundTypeTextBox}>
-                      <Text style={[styles.fundTypeName, fundType === 'shared' && { color: '#FFFFFF' }]}>공금</Text>
-                      <Text style={[styles.fundTypeDesc, fundType === 'shared' && { color: 'rgba(255,255,255,0.7)' }]}>가족 공용 지출</Text>
-                    </View>
-                    {fundType === 'shared' && <Ionicons name="checkmark-circle" size={20} color="#FFFFFF" />}
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={[styles.fundTypeBtn, fundType === 'personal' && styles.fundTypeBtnActivePersonal]}
-                    onPress={() => setFundType('personal')}
-                  >
-                    <View style={[styles.fundTypeIcon, { backgroundColor: fundType === 'personal' ? '#FFFFFF30' : Colors.income + '15' }]}>
-                      <Ionicons name="person" size={18} color={fundType === 'personal' ? '#FFFFFF' : Colors.income} />
-                    </View>
-                    <View style={styles.fundTypeTextBox}>
-                      <Text style={[styles.fundTypeName, fundType === 'personal' && { color: '#FFFFFF' }]}>용돈</Text>
-                      <Text style={[styles.fundTypeDesc, fundType === 'personal' && { color: 'rgba(255,255,255,0.7)' }]}>개인 용돈에서 차감</Text>
-                    </View>
-                    {fundType === 'personal' && <Ionicons name="checkmark-circle" size={20} color="#FFFFFF" />}
-                  </TouchableOpacity>
-                </View>
-
-                {fundType === 'personal' && myAllowance > 0 && (
-                  <View style={styles.fundTypeHint}>
-                    <Ionicons name="information-circle-outline" size={14} color={Colors.primary} />
-                    <Text style={styles.fundTypeHintText}>이 지출은 {myWalletName}님의 용돈({myAllowance.toLocaleString('ko-KR')}원)에서 차감됩니다</Text>
-                  </View>
-                )}
-                {fundType === 'personal' && myAllowance === 0 && (
-                  <View style={styles.fundTypeHint}>
-                    <Ionicons name="alert-circle-outline" size={14} color={Colors.warning} />
-                    <Text style={[styles.fundTypeHintText, { color: Colors.warning }]}>아직 용돈이 설정되지 않았어요. 설정에서 관리자에게 요청하세요!</Text>
-                  </View>
-                )}
-              </View>
-            )}
-
-            {/* 기록자 표시 */}
-            <View style={styles.memberCard}>
-              <View style={styles.memberAvatar}>
-                <Text style={styles.memberAvatarText}>{myWalletName.charAt(0)}</Text>
-              </View>
-              <View style={styles.memberInfo}>
-                <Text style={styles.memberName}>{myWalletName}</Text>
-                <Text style={styles.memberRole}>{myRole === 'admin' ? '관리자' : '멤버'}</Text>
-              </View>
-              {myRole === 'admin' && (
-                <View style={styles.adminBadge}><Ionicons name="shield-checkmark" size={12} color={Colors.primary} /><Text style={styles.adminBadgeText}>관리자</Text></View>
+              {isAdmin && (
+                <TouchableOpacity
+                  style={[styles.typeButton, type === 'fixed' && styles.typeButtonActiveFixed]}
+                  onPress={() => setType('fixed')}
+                >
+                  <Ionicons name="calendar" size={20} color={type === 'fixed' ? '#FFFFFF' : Colors.primary} />
+                  <Text style={[styles.typeButtonText, type === 'fixed' && { color: '#FFFFFF' }]}>고정지출</Text>
+                </TouchableOpacity>
               )}
             </View>
 
-            {/* 금액 */}
-            <View style={styles.inputCard}>
-              <Text style={styles.inputLabel}>금액</Text>
-              <View style={styles.amountRow}>
-                <TextInput style={styles.amountInput} placeholder="0" placeholderTextColor={Colors.textLight} keyboardType="numeric" value={amount} onChangeText={(t) => setAmount(t.replace(/[^0-9]/g, ''))} />
-                <Text style={styles.wonText}>원</Text>
-              </View>
-              {amount ? (
-                <View style={styles.amountPreviewRow}>
-                  <View style={[styles.amountPreviewDot, { backgroundColor: type === 'expense' ? Colors.expense : Colors.income }]} />
-                  <Text style={[styles.amountPreview, { color: type === 'expense' ? Colors.expense : Colors.income }]}>
-                    {type === 'expense' ? '- ' : '+ '}{parseInt(amount).toLocaleString('ko-KR')}원
-                  </Text>
+            {type === 'fixed' ? (
+              /* ===== 고정지출 등록 폼 ===== */
+              <>
+                {/* 항목명 */}
+                <View style={styles.inputCard}>
+                  <Text style={styles.inputLabel}>항목명</Text>
+                  <TextInput
+                    style={styles.fixedNameInput}
+                    placeholder="예: 월세, 통신비, 보험료"
+                    placeholderTextColor={Colors.textLight}
+                    value={fixedName}
+                    onChangeText={setFixedName}
+                  />
+                  <View style={styles.fixedPresets}>
+                    {FIXED_PRESETS.map((preset) => (
+                      <TouchableOpacity
+                        key={preset.name}
+                        style={[styles.fixedPresetChip, fixedName === preset.name && { backgroundColor: Colors.primary + '20', borderColor: Colors.primary }]}
+                        onPress={() => setFixedName(preset.name)}
+                      >
+                        <Ionicons name={preset.icon} size={14} color={fixedName === preset.name ? Colors.primary : Colors.textGray} />
+                        <Text style={[styles.fixedPresetText, fixedName === preset.name && { color: Colors.primary }]}>{preset.name}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
                 </View>
-              ) : null}
-            </View>
 
-            {/* 카테고리 */}
-            <View style={styles.inputCard}>
-              <Text style={styles.inputLabel}>{type === 'expense' ? '지출 카테고리' : '수입 카테고리'}</Text>
-              <View style={styles.categoryGrid}>
-                {currentCategories.map((cat) => {
-                  const isSelected = selectedCategory === cat.id;
-                  const catColor = Colors.category[cat.id] || Colors.primary;
-                  return (
-                    <TouchableOpacity
-                      key={cat.id}
-                      style={[styles.categoryItem, isSelected && { backgroundColor: catColor + '18', borderColor: catColor }]}
-                      onPress={() => setSelectedCategory(cat.id)}
-                    >
-                      <View style={[styles.categoryIconBox, { backgroundColor: catColor + (isSelected ? '30' : '12') }]}>
-                        <Ionicons name={cat.icon} size={22} color={catColor} />
+                {/* 금액 */}
+                <View style={styles.inputCard}>
+                  <Text style={styles.inputLabel}>금액</Text>
+                  <View style={styles.amountRow}>
+                    <TextInput style={styles.amountInput} placeholder="0" placeholderTextColor={Colors.textLight} keyboardType="numeric" value={amount} onChangeText={(t) => setAmount(t.replace(/[^0-9]/g, ''))} />
+                    <Text style={styles.wonText}>원</Text>
+                  </View>
+                  {amount ? (
+                    <View style={styles.amountPreviewRow}>
+                      <View style={[styles.amountPreviewDot, { backgroundColor: Colors.primary }]} />
+                      <Text style={[styles.amountPreview, { color: Colors.primary }]}>매월 {parseInt(amount).toLocaleString('ko-KR')}원</Text>
+                    </View>
+                  ) : null}
+                </View>
+
+                {/* 자동 기록일 */}
+                <View style={styles.inputCard}>
+                  <Text style={styles.inputLabel}>자동 기록일</Text>
+                  <View style={styles.fixedDayRow}>
+                    <Text style={styles.fixedDayText}>매월</Text>
+                    <TextInput
+                      style={styles.fixedDayInput}
+                      placeholder="1"
+                      placeholderTextColor={Colors.textLight}
+                      keyboardType="number-pad"
+                      maxLength={2}
+                      value={fixedDay}
+                      onChangeText={(t) => setFixedDay(t.replace(/[^0-9]/g, ''))}
+                    />
+                    <Text style={styles.fixedDayText}>일에 자동 기록</Text>
+                  </View>
+                  <View style={styles.fixedDayHint}>
+                    <Ionicons name="information-circle-outline" size={14} color={Colors.textGray} />
+                    <Text style={styles.fixedDayHintText}>해당 날짜에 공금 지출(주거 카테고리)로 자동 기록됩니다</Text>
+                  </View>
+                </View>
+
+                {/* 저장 */}
+                <TouchableOpacity style={styles.saveButton} onPress={handleSaveFixed} activeOpacity={0.85}>
+                  <LinearGradient
+                    colors={[Colors.primary, Colors.gradientEnd]}
+                    style={styles.saveGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+                  >
+                    <Ionicons name="calendar" size={22} color="#FFFFFF" />
+                    <Text style={styles.saveText}>고정 지출 등록하기</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+              </>
+            ) : (
+              /* ===== 일반 지출/수입 폼 ===== */
+              <>
+                {/* 공금/용돈 선택 (지출일 때만) */}
+                {type === 'expense' && (
+                  <View style={styles.fundTypeCard}>
+                    <Text style={styles.fundTypeLabel}>💳 지출 출처</Text>
+                    <View style={styles.fundTypeRow}>
+                      <TouchableOpacity
+                        style={[styles.fundTypeBtn, fundType === 'shared' && styles.fundTypeBtnActiveShared]}
+                        onPress={() => setFundType('shared')}
+                      >
+                        <View style={[styles.fundTypeIcon, { backgroundColor: fundType === 'shared' ? '#FFFFFF30' : Colors.primary + '15' }]}>
+                          <Ionicons name="people" size={18} color={fundType === 'shared' ? '#FFFFFF' : Colors.primary} />
+                        </View>
+                        <View style={styles.fundTypeTextBox}>
+                          <Text style={[styles.fundTypeName, fundType === 'shared' && { color: '#FFFFFF' }]}>공금</Text>
+                          <Text style={[styles.fundTypeDesc, fundType === 'shared' && { color: 'rgba(255,255,255,0.7)' }]}>가족 공용 지출</Text>
+                        </View>
+                        {fundType === 'shared' && <Ionicons name="checkmark-circle" size={20} color="#FFFFFF" />}
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={[styles.fundTypeBtn, fundType === 'personal' && styles.fundTypeBtnActivePersonal]}
+                        onPress={() => setFundType('personal')}
+                      >
+                        <View style={[styles.fundTypeIcon, { backgroundColor: fundType === 'personal' ? '#FFFFFF30' : Colors.income + '15' }]}>
+                          <Ionicons name="person" size={18} color={fundType === 'personal' ? '#FFFFFF' : Colors.income} />
+                        </View>
+                        <View style={styles.fundTypeTextBox}>
+                          <Text style={[styles.fundTypeName, fundType === 'personal' && { color: '#FFFFFF' }]}>용돈</Text>
+                          <Text style={[styles.fundTypeDesc, fundType === 'personal' && { color: 'rgba(255,255,255,0.7)' }]}>개인 용돈에서 차감</Text>
+                        </View>
+                        {fundType === 'personal' && <Ionicons name="checkmark-circle" size={20} color="#FFFFFF" />}
+                      </TouchableOpacity>
+                    </View>
+
+                    {fundType === 'personal' && myAllowance > 0 && (
+                      <View style={styles.fundTypeHint}>
+                        <Ionicons name="information-circle-outline" size={14} color={Colors.primary} />
+                        <Text style={styles.fundTypeHintText}>이 지출은 {myWalletName}님의 용돈({myAllowance.toLocaleString('ko-KR')}원)에서 차감됩니다</Text>
                       </View>
-                      <Text style={[styles.categoryName, isSelected && { color: catColor, fontWeight: 'bold' }]}>{cat.name}</Text>
-                      {isSelected && <View style={[styles.categoryCheck, { backgroundColor: catColor }]}><Ionicons name="checkmark" size={10} color="#FFF" /></View>}
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            </View>
+                    )}
+                    {fundType === 'personal' && myAllowance === 0 && (
+                      <View style={styles.fundTypeHint}>
+                        <Ionicons name="alert-circle-outline" size={14} color={Colors.warning} />
+                        <Text style={[styles.fundTypeHintText, { color: Colors.warning }]}>아직 용돈이 설정되지 않았어요. 설정에서 관리자에게 요청하세요!</Text>
+                      </View>
+                    )}
+                  </View>
+                )}
 
-            {/* 메모 */}
-            <View style={styles.inputCard}>
-              <Text style={styles.inputLabel}>메모 (선택사항)</Text>
-              <TextInput style={styles.memoInput} placeholder={type === 'expense' ? '예: 점심 식사, 택시비 등' : '예: 2월 월급, 세뱃돈 등'} placeholderTextColor={Colors.textLight} value={memo} onChangeText={setMemo} multiline />
-            </View>
+                {/* 기록자 표시 */}
+                <View style={styles.memberCard}>
+                  <View style={styles.memberAvatar}>
+                    <Text style={styles.memberAvatarText}>{myWalletName.charAt(0)}</Text>
+                  </View>
+                  <View style={styles.memberInfo}>
+                    <Text style={styles.memberName}>{myWalletName}</Text>
+                    <Text style={styles.memberRole}>{myRole === 'admin' ? '관리자' : '멤버'}</Text>
+                  </View>
+                  {myRole === 'admin' && (
+                    <View style={styles.adminBadge}><Ionicons name="shield-checkmark" size={12} color={Colors.primary} /><Text style={styles.adminBadgeText}>관리자</Text></View>
+                  )}
+                </View>
 
-            {/* 저장 */}
-            <TouchableOpacity style={styles.saveButton} onPress={handleSave} activeOpacity={0.85}>
-              <LinearGradient
-                colors={type === 'expense' ? [Colors.expense, '#D43A38'] : [Colors.income, '#1FA870']}
-                style={styles.saveGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
-              >
-                <Ionicons name="checkmark-circle" size={22} color="#FFFFFF" />
-                <Text style={styles.saveText}>
-                  {type === 'expense' ? '지출' : '수입'} 저장하기
-                  {type === 'expense' && fundType === 'personal' ? ' (용돈)' : ''}
-                  {type === 'expense' && fundType === 'shared' ? ' (공금)' : ''}
-                </Text>
-              </LinearGradient>
-            </TouchableOpacity>
+                {/* 금액 */}
+                <View style={styles.inputCard}>
+                  <Text style={styles.inputLabel}>금액</Text>
+                  <View style={styles.amountRow}>
+                    <TextInput style={styles.amountInput} placeholder="0" placeholderTextColor={Colors.textLight} keyboardType="numeric" value={amount} onChangeText={(t) => setAmount(t.replace(/[^0-9]/g, ''))} />
+                    <Text style={styles.wonText}>원</Text>
+                  </View>
+                  {amount ? (
+                    <View style={styles.amountPreviewRow}>
+                      <View style={[styles.amountPreviewDot, { backgroundColor: type === 'expense' ? Colors.expense : Colors.income }]} />
+                      <Text style={[styles.amountPreview, { color: type === 'expense' ? Colors.expense : Colors.income }]}>
+                        {type === 'expense' ? '- ' : '+ '}{parseInt(amount).toLocaleString('ko-KR')}원
+                      </Text>
+                    </View>
+                  ) : null}
+                </View>
+
+                {/* 카테고리 */}
+                <View style={styles.inputCard}>
+                  <Text style={styles.inputLabel}>{type === 'expense' ? '지출 카테고리' : '수입 카테고리'}</Text>
+                  <View style={styles.categoryGrid}>
+                    {currentCategories.map((cat) => {
+                      const isSelected = selectedCategory === cat.id;
+                      const catColor = Colors.category[cat.id] || Colors.primary;
+                      return (
+                        <TouchableOpacity
+                          key={cat.id}
+                          style={[styles.categoryItem, isSelected && { backgroundColor: catColor + '18', borderColor: catColor }]}
+                          onPress={() => setSelectedCategory(cat.id)}
+                        >
+                          <View style={[styles.categoryIconBox, { backgroundColor: catColor + (isSelected ? '30' : '12') }]}>
+                            <Ionicons name={cat.icon} size={22} color={catColor} />
+                          </View>
+                          <Text style={[styles.categoryName, isSelected && { color: catColor, fontWeight: 'bold' }]}>{cat.name}</Text>
+                          {isSelected && <View style={[styles.categoryCheck, { backgroundColor: catColor }]}><Ionicons name="checkmark" size={10} color="#FFF" /></View>}
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </View>
+
+                {/* 메모 */}
+                <View style={styles.inputCard}>
+                  <Text style={styles.inputLabel}>메모 (선택사항)</Text>
+                  <TextInput style={styles.memoInput} placeholder={type === 'expense' ? '예: 점심 식사, 택시비 등' : '예: 2월 월급, 세뱃돈 등'} placeholderTextColor={Colors.textLight} value={memo} onChangeText={setMemo} multiline />
+                </View>
+
+                {/* 저장 */}
+                <TouchableOpacity style={styles.saveButton} onPress={handleSave} activeOpacity={0.85}>
+                  <LinearGradient
+                    colors={type === 'expense' ? [Colors.expense, '#D43A38'] : [Colors.income, '#1FA870']}
+                    style={styles.saveGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+                  >
+                    <Ionicons name="checkmark-circle" size={22} color="#FFFFFF" />
+                    <Text style={styles.saveText}>
+                      {type === 'expense' ? '지출' : '수입'} 저장하기
+                      {type === 'expense' && fundType === 'personal' ? ' (용돈)' : ''}
+                      {type === 'expense' && fundType === 'shared' ? ' (공금)' : ''}
+                    </Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+              </>
+            )}
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -249,6 +370,7 @@ const getStyles = (Colors) => StyleSheet.create({
   typeButtonText: { fontSize: 15, fontWeight: '700', color: Colors.textDark },
   typeButtonActiveExpense: { backgroundColor: Colors.expense },
   typeButtonActiveIncome: { backgroundColor: Colors.income },
+  typeButtonActiveFixed: { backgroundColor: Colors.primary },
   // 공금/용돈
   fundTypeCard: { backgroundColor: Colors.surface, borderRadius: 16, padding: 18, marginBottom: 14, borderWidth: 1, borderColor: Colors.border },
   fundTypeLabel: { fontSize: 14, fontWeight: '700', color: Colors.textBlack, marginBottom: 12 },
@@ -292,4 +414,14 @@ const getStyles = (Colors) => StyleSheet.create({
   saveButton: { marginTop: 6, borderRadius: 16, overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 12, elevation: 4 },
   saveGradient: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 18, gap: 8 },
   saveText: { fontSize: 17, fontWeight: '800', color: '#FFFFFF' },
+  // 고정지출 폼
+  fixedNameInput: { fontSize: 18, fontWeight: '700', color: Colors.textBlack, padding: 0, marginBottom: 14 },
+  fixedPresets: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  fixedPresetChip: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, backgroundColor: Colors.background, borderWidth: 1.5, borderColor: Colors.border },
+  fixedPresetText: { fontSize: 13, fontWeight: '600', color: Colors.textGray },
+  fixedDayRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10 },
+  fixedDayText: { fontSize: 16, fontWeight: '600', color: Colors.textBlack },
+  fixedDayInput: { width: 64, backgroundColor: Colors.background, borderRadius: 12, padding: 12, fontSize: 22, fontWeight: '800', color: Colors.textBlack, textAlign: 'center', borderWidth: 1.5, borderColor: Colors.border },
+  fixedDayHint: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 14, paddingTop: 12, borderTopWidth: 1, borderTopColor: Colors.divider },
+  fixedDayHintText: { fontSize: 12, color: Colors.textGray, flex: 1, lineHeight: 17 },
 });
