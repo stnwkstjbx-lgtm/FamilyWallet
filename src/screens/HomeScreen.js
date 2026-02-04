@@ -26,7 +26,7 @@ const showAlert = (title, message, buttons) => {
 export default function HomeScreen() {
   const { colors: Colors, isDark } = useTheme();
   const { user, userProfile } = useAuth();
-  const { currentWalletId, currentWallet, isAdmin } = useWallet();
+  const { currentWalletId, currentWallet, isAdmin, sharedBudgetInfo } = useWallet();
   const styles = getStyles(Colors);
 
   const [transactions, setTransactions] = useState([]);
@@ -410,13 +410,22 @@ export default function HomeScreen() {
               </>
             ) : (
               <>
-                <Text style={styles.balanceLabel}>{myAllowance > 0 ? '내 용돈 잔액' : '이번 달 내 지출'}</Text>
+                <Text style={styles.balanceLabel}>
+                  {myAllowance > 0 ? '내 용돈 잔액' : sharedBudgetInfo ? '공금 잔액' : '이번 달 내 지출'}
+                </Text>
                 <Text style={styles.balanceAmount}>
                   {myAllowance > 0
                     ? (myAllowanceRemain < 0 ? '-' : '') + formatMoney(myAllowanceRemain)
-                    : formatMoney(myPersonalExpense)
+                    : sharedBudgetInfo
+                      ? (sharedBudgetInfo.remaining < 0 ? '-' : '') + formatMoney(sharedBudgetInfo.remaining)
+                      : formatMoney(myPersonalExpense)
                   }
                 </Text>
+                {sharedBudgetInfo && !myAllowance && (
+                  <View style={styles.balanceMeta}>
+                    <Text style={styles.balanceMetaText}>예산 {sharedBudgetInfo.pct}% 사용</Text>
+                  </View>
+                )}
               </>
             )}
           </View>
@@ -639,6 +648,39 @@ export default function HomeScreen() {
                   <Text style={styles.memberNoAllowanceSubText}>용돈 탭에서 관리자에게 요청할 수 있어요</Text>
                 </View>
               )}
+            </View>
+          )}
+
+          {/* ===== 공금 예산 카드 (모든 구성원 공유) ===== */}
+          {sharedBudgetInfo && (
+            <View style={styles.sharedBudgetCard}>
+              <View style={styles.sharedBudgetHeader}>
+                <View style={[styles.summaryIconWrap, { backgroundColor: Colors.primary + '15' }]}>
+                  <Ionicons name="briefcase" size={18} color={Colors.primary} />
+                </View>
+                <Text style={styles.sharedBudgetTitle}>공금 예산</Text>
+                <Text style={[styles.sharedBudgetRemain, {
+                  color: sharedBudgetInfo.remaining >= 0 ? Colors.income : Colors.expense,
+                }]}>
+                  {formatMoney(sharedBudgetInfo.remaining)} {sharedBudgetInfo.remaining >= 0 ? '남음' : '초과'}
+                </Text>
+              </View>
+              <View style={styles.sharedBudgetBar}>
+                <View style={[styles.sharedBudgetBarFill, {
+                  width: `${Math.min(sharedBudgetInfo.pct, 100)}%`,
+                  backgroundColor: sharedBudgetInfo.pct >= 90 ? Colors.expense : sharedBudgetInfo.pct >= 70 ? Colors.warning : Colors.income,
+                }]} />
+              </View>
+              <View style={styles.sharedBudgetFooter}>
+                <Text style={styles.sharedBudgetFooterText}>
+                  {formatMoney(sharedBudgetInfo.budget)} 중 {formatMoney(sharedBudgetInfo.spent)} 사용
+                </Text>
+                <Text style={[styles.sharedBudgetPct, {
+                  color: sharedBudgetInfo.pct >= 90 ? Colors.expense : sharedBudgetInfo.pct >= 70 ? Colors.warning : Colors.textGray,
+                }]}>
+                  {sharedBudgetInfo.pct}%
+                </Text>
+              </View>
             </View>
           )}
 
@@ -1222,6 +1264,17 @@ const getStyles = (Colors) => StyleSheet.create({
   memberNoAllowance: { alignItems: 'center', paddingVertical: 8, gap: 8 },
   memberNoAllowanceText: { fontSize: 15, fontWeight: '600', color: Colors.textBlack },
   memberNoAllowanceSubText: { fontSize: 13, color: Colors.textGray },
+
+  // 공금 예산 카드
+  sharedBudgetCard: { backgroundColor: Colors.surface, borderRadius: 16, padding: 16, marginBottom: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 10, elevation: 3 },
+  sharedBudgetHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
+  sharedBudgetTitle: { flex: 1, fontSize: 14, fontWeight: '700', color: Colors.textBlack },
+  sharedBudgetRemain: { fontSize: 15, fontWeight: '800' },
+  sharedBudgetBar: { height: 8, backgroundColor: Colors.background, borderRadius: 4, overflow: 'hidden' },
+  sharedBudgetBarFill: { height: 8, borderRadius: 4 },
+  sharedBudgetFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 },
+  sharedBudgetFooterText: { fontSize: 11, color: Colors.textGray },
+  sharedBudgetPct: { fontSize: 12, fontWeight: '700' },
 
   // 내 용돈
   myAllowanceCard: { backgroundColor: Colors.surface, borderRadius: 16, padding: 16, marginBottom: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 10, elevation: 3 },

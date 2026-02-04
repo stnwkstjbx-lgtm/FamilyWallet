@@ -28,6 +28,7 @@ export default function SettingsScreen() {
   const {
     currentWalletId, currentWallet, isAdmin, userWallets, maxWallets,
     switchWallet, leaveWallet, regenerateInviteCode, getInviteLink, getInviteMessage, goToWalletList, toggleAdmin,
+    setSharedBudget,
   } = useWallet();
   const styles = getStyles(Colors);
 
@@ -48,6 +49,8 @@ export default function SettingsScreen() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deletePassword, setDeletePassword] = useState('');
   const [deleteLoading, setDeleteLoading] = useState(false);
+  const [showBudgetModal, setShowBudgetModal] = useState(false);
+  const [budgetAmount, setBudgetAmount] = useState('');
 
   useEffect(() => {
     if (!currentWalletId) return;
@@ -89,6 +92,8 @@ export default function SettingsScreen() {
   const members = currentWallet?.members ? Object.entries(currentWallet.members).map(([uid, data]) => ({ uid, ...data })) : [];
   const totalAllowance = members.reduce((s, m) => s + (m.allowance || 0), 0);
   const fixedTotal = fixedExpenses.reduce((s, i) => s + i.amount, 0);
+  const monthlyBudget = currentWallet?.monthlyBudget || 0;
+  const sharedBudgetUsedPct = monthlyBudget > 0 ? Math.min(Math.round((totalExpense / monthlyBudget) * 100), 999) : 0;
 
   const handleSaveName = async () => {
     if (!newName.trim()) return;
@@ -158,6 +163,18 @@ export default function SettingsScreen() {
   const handleRegenCode = async () => {
     const result = await regenerateInviteCode();
     if (result.success) showAlert('재생성 완료!', `새 초대 코드: ${result.inviteCode}`);
+  };
+
+  const handleSaveBudget = async () => {
+    const amt = parseInt(budgetAmount) || 0;
+    const result = await setSharedBudget(amt);
+    if (result.success) {
+      showAlert('설정 완료', amt > 0 ? `공금 월 예산: ${amt.toLocaleString('ko-KR')}원` : '공금 예산이 해제되었습니다.');
+      setShowBudgetModal(false);
+      setBudgetAmount('');
+    } else {
+      showAlert('오류', result.message);
+    }
   };
 
   // 관리자 지정/해제
@@ -396,6 +413,46 @@ export default function SettingsScreen() {
                 <Ionicons name="pie-chart" size={22} color={Colors.primary} />
                 <Text style={styles.sectionTitle}>예산 배분 현황</Text>
               </View>
+
+              {/* 공금 월 예산 카드 */}
+              <View style={styles.sharedBudgetCard}>
+                <View style={styles.sharedBudgetHeader}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.sharedBudgetLabel}>공금 월 예산</Text>
+                    <Text style={styles.sharedBudgetAmount}>
+                      {monthlyBudget > 0 ? formatMoney(monthlyBudget) : '미설정'}
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.sharedBudgetBtn}
+                    onPress={() => { setBudgetAmount(monthlyBudget > 0 ? String(monthlyBudget) : ''); setShowBudgetModal(true); }}
+                  >
+                    <Ionicons name="create-outline" size={16} color={Colors.primary} />
+                    <Text style={styles.sharedBudgetBtnText}>{monthlyBudget > 0 ? '수정' : '설정'}</Text>
+                  </TouchableOpacity>
+                </View>
+                {monthlyBudget > 0 && (
+                  <>
+                    <View style={styles.sharedBudgetBar}>
+                      <View style={[styles.sharedBudgetBarFill, {
+                        width: `${Math.min(sharedBudgetUsedPct, 100)}%`,
+                        backgroundColor: sharedBudgetUsedPct >= 90 ? Colors.expense : sharedBudgetUsedPct >= 70 ? Colors.warning : Colors.income,
+                      }]} />
+                    </View>
+                    <View style={styles.sharedBudgetFooter}>
+                      <Text style={styles.sharedBudgetFooterText}>
+                        {formatMoney(totalExpense)} 사용 ({sharedBudgetUsedPct}%)
+                      </Text>
+                      <Text style={[styles.sharedBudgetFooterRemain, {
+                        color: (monthlyBudget - totalExpense) >= 0 ? Colors.income : Colors.expense,
+                      }]}>
+                        {formatMoney(monthlyBudget - totalExpense)} {(monthlyBudget - totalExpense) >= 0 ? '남음' : '초과'}
+                      </Text>
+                    </View>
+                  </>
+                )}
+              </View>
+
               <View style={styles.budgetBox}>
                 <View style={styles.bRow}><Text style={styles.bLabel}>총 수입</Text><Text style={[styles.bValue, { color: Colors.income }]}>{formatMoney(totalIncome)}</Text></View>
                 <View style={styles.bRow}><Text style={styles.bLabel}>총 지출</Text><Text style={[styles.bValue, { color: Colors.expense }]}>{formatMoney(totalExpense + totalAllowance)}</Text></View>
@@ -599,6 +656,37 @@ export default function SettingsScreen() {
           </View>
         </View></View>
       </Modal>
+
+      {/* 공금 예산 설정 모달 */}
+      <Modal visible={showBudgetModal} transparent animationType="slide">
+        <View style={styles.modalOverlay}><View style={styles.modalContent}>
+          <Text style={styles.modalTitle}>공금 월 예산 설정</Text>
+          <Text style={{ fontSize: 13, color: Colors.textGray, marginBottom: 16 }}>
+            모든 구성원이 공유하는 월 공금 예산을 설정합니다.
+          </Text>
+          <TextInput
+            style={styles.modalInput}
+            placeholder="예산 금액 (0 입력시 해제)"
+            placeholderTextColor={Colors.textLight}
+            keyboardType="numeric"
+            value={budgetAmount}
+            onChangeText={(t) => setBudgetAmount(t.replace(/[^0-9]/g, ''))}
+          />
+          {budgetAmount && budgetAmount !== '0' ? (
+            <Text style={[styles.preview, { color: Colors.primary }]}>
+              월 {parseInt(budgetAmount).toLocaleString('ko-KR')}원
+            </Text>
+          ) : null}
+          <View style={styles.modalBtns}>
+            <TouchableOpacity style={styles.modalBtnCancel} onPress={() => { setShowBudgetModal(false); setBudgetAmount(''); }}>
+              <Text style={[styles.modalBtnText, { color: Colors.textGray }]}>취소</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.modalBtn, { backgroundColor: Colors.primary }]} onPress={handleSaveBudget}>
+              <Text style={[styles.modalBtnText, { color: '#fff' }]}>설정</Text>
+            </TouchableOpacity>
+          </View>
+        </View></View>
+      </Modal>
     </View>
   );
 }
@@ -649,6 +737,18 @@ const getStyles = (Colors) => StyleSheet.create({
   shareBtnText: { fontSize: 13, fontWeight: 'bold', color: '#3C1E1E' },
   regenBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, justifyContent: 'center', marginTop: 10, paddingVertical: 8 },
   regenBtnText: { fontSize: 13, color: Colors.primary },
+  // 공금 예산
+  sharedBudgetCard: { backgroundColor: Colors.background, borderRadius: 14, padding: 16, marginBottom: 14 },
+  sharedBudgetHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
+  sharedBudgetLabel: { fontSize: 12, fontWeight: '600', color: Colors.textGray, marginBottom: 2 },
+  sharedBudgetAmount: { fontSize: 22, fontWeight: '800', color: Colors.textBlack },
+  sharedBudgetBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, backgroundColor: Colors.primary + '12' },
+  sharedBudgetBtnText: { fontSize: 13, fontWeight: '600', color: Colors.primary },
+  sharedBudgetBar: { height: 8, backgroundColor: Colors.surface, borderRadius: 4, overflow: 'hidden' },
+  sharedBudgetBarFill: { height: 8, borderRadius: 4 },
+  sharedBudgetFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 },
+  sharedBudgetFooterText: { fontSize: 12, fontWeight: '600', color: Colors.textGray },
+  sharedBudgetFooterRemain: { fontSize: 13, fontWeight: '700' },
   // 예산
   budgetBox: { backgroundColor: Colors.background, borderRadius: 12, padding: 16 },
   bRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },

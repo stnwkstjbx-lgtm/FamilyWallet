@@ -61,6 +61,23 @@ export function WalletProvider({ children }) {
     );
   }, [rawTransactions, isAdmin, user]);
 
+  // ★ 공금 예산 사용률 (전 멤버 공유, rawTransactions 기반)
+  const sharedBudgetInfo = useMemo(() => {
+    const budget = currentWallet?.monthlyBudget || 0;
+    if (budget <= 0) return null;
+    const now = new Date();
+    const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const spent = rawTransactions
+      .filter((tx) => {
+        if (tx.type !== 'expense') return false;
+        if (tx.fundType === 'personal' || tx.fundType === 'allowance_allocation') return false;
+        return (tx.date?.slice(0, 7) || '') === ym;
+      })
+      .reduce((sum, tx) => sum + (tx.amount || 0), 0);
+    const pct = Math.min(Math.round((spent / budget) * 100), 999);
+    return { budget, spent, remaining: budget - spent, pct };
+  }, [currentWallet, rawTransactions]);
+
   // ★ 비관리자용: 다른 멤버의 용돈 정보 숨기기
   const sanitizedWallet = useMemo(() => {
     if (!currentWallet || isAdmin) return currentWallet;
@@ -298,6 +315,21 @@ export function WalletProvider({ children }) {
       `초대코드: ${code}\n\n` +
       `앱 설치 후 → "기존 가계부 합류" → 코드 입력\n` +
       `또는 링크 탭: ${deepLink}`;
+  };
+
+  // ══════════════════════════════════════════
+  // ★ 공금 월 예산 설정 (관리자 전용)
+  // ══════════════════════════════════════════
+
+  const setSharedBudget = async (amount) => {
+    if (!currentWalletId || !isAdmin) return { success: false, message: '권한이 없습니다' };
+    if (typeof amount !== 'number' || amount < 0) return { success: false, message: '유효하지 않은 금액입니다' };
+    try {
+      await updateDoc(doc(db, 'wallets', currentWalletId), { monthlyBudget: amount });
+      return { success: true };
+    } catch (error) {
+      return { success: false, message: error.message || '예산 설정에 실패했습니다' };
+    }
   };
 
   // ══════════════════════════════════════════
@@ -681,7 +713,11 @@ export function WalletProvider({ children }) {
     regenerateInviteCode,
     getInviteLink,
     getInviteMessage,
-    
+
+    // 공금 예산
+    setSharedBudget,
+    sharedBudgetInfo,
+
     // 트랜잭션
     addTransaction,
 
