@@ -244,13 +244,13 @@ const getStyles = (Colors) => StyleSheet.create({
   headerSubtitle: { fontSize: 14, color: 'rgba(255,255,255,0.75)', marginTop: 4 },
   formContainer: { paddingHorizontal: 20, paddingTop: 20, paddingBottom: 100 },
   // 수입/지출 토글
-  typeCard: { flexDirection: 'row', backgroundColor: Colors.surface, borderRadius: 16, padding: 5, marginBottom: 14, borderWidth: 1, borderColor: Colors.background },
+  typeCard: { flexDirection: 'row', backgroundColor: Colors.surface, borderRadius: 16, padding: 5, marginBottom: 14, borderWidth: 1, borderColor: Colors.border },
   typeButton: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 14, borderRadius: 12, gap: 6 },
   typeButtonText: { fontSize: 15, fontWeight: '700', color: Colors.textDark },
   typeButtonActiveExpense: { backgroundColor: Colors.expense },
   typeButtonActiveIncome: { backgroundColor: Colors.income },
   // 공금/용돈
-  fundTypeCard: { backgroundColor: Colors.surface, borderRadius: 16, padding: 18, marginBottom: 14, borderWidth: 1, borderColor: Colors.background },
+  fundTypeCard: { backgroundColor: Colors.surface, borderRadius: 16, padding: 18, marginBottom: 14, borderWidth: 1, borderColor: Colors.border },
   fundTypeLabel: { fontSize: 14, fontWeight: '700', color: Colors.textBlack, marginBottom: 12 },
   fundTypeRow: { gap: 10 },
   fundTypeBtn: { flexDirection: 'row', alignItems: 'center', borderRadius: 14, padding: 14, gap: 12, backgroundColor: Colors.background, borderWidth: 1.5, borderColor: 'transparent' },
@@ -260,10 +260,10 @@ const getStyles = (Colors) => StyleSheet.create({
   fundTypeTextBox: { flex: 1 },
   fundTypeName: { fontSize: 15, fontWeight: '700', color: Colors.textBlack },
   fundTypeDesc: { fontSize: 12, color: Colors.textGray, marginTop: 1 },
-  fundTypeHint: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: Colors.background },
+  fundTypeHint: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: Colors.divider },
   fundTypeHintText: { fontSize: 12, color: Colors.primary, flex: 1, lineHeight: 17 },
   // 기록자
-  memberCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.surface, borderRadius: 14, padding: 14, marginBottom: 14, gap: 12, borderWidth: 1, borderColor: Colors.background },
+  memberCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.surface, borderRadius: 14, padding: 14, marginBottom: 14, gap: 12, borderWidth: 1, borderColor: Colors.border },
   memberAvatar: { width: 40, height: 40, borderRadius: 12, backgroundColor: Colors.primary, justifyContent: 'center', alignItems: 'center' },
   memberAvatarText: { fontSize: 17, fontWeight: 'bold', color: '#FFF' },
   memberInfo: { flex: 1 },
@@ -272,7 +272,7 @@ const getStyles = (Colors) => StyleSheet.create({
   adminBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: Colors.primary + '12', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4 },
   adminBadgeText: { fontSize: 11, fontWeight: 'bold', color: Colors.primary },
   // 입력 카드
-  inputCard: { backgroundColor: Colors.surface, borderRadius: 16, padding: 20, marginBottom: 14, borderWidth: 1, borderColor: Colors.background },
+  inputCard: { backgroundColor: Colors.surface, borderRadius: 16, padding: 20, marginBottom: 14, borderWidth: 1, borderColor: Colors.border },
   inputLabel: { fontSize: 13, fontWeight: '700', color: Colors.textGray, marginBottom: 12, letterSpacing: 0.3 },
   amountRow: { flexDirection: 'row', alignItems: 'center' },
   amountInput: { flex: 1, fontSize: 34, fontWeight: '800', color: Colors.textBlack, padding: 0, letterSpacing: -1 },

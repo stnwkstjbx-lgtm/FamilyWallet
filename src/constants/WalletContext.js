@@ -69,66 +69,74 @@ export function WalletProvider({ children }) {
 
   // 가계부 생성
   const createWallet = async (name) => {
-    if (!user) throw new Error('로그인이 필요합니다');
-    if (wallets.length >= MAX_WALLETS) throw new Error(`최대 ${MAX_WALLETS}개의 가계부만 만들 수 있어요`);
+    try {
+      if (!user) return { success: false, message: '로그인이 필요합니다' };
+      if (wallets.length >= MAX_WALLETS) return { success: false, message: `최대 ${MAX_WALLETS}개의 가계부만 만들 수 있어요` };
 
-    const inviteCode = generateInviteCode();
-    const walletRef = doc(collection(db, 'wallets'));
-    const walletData = {
-      name,
-      inviteCode,
-      createdBy: user.uid,
-      members: {
-        [user.uid]: {
-          name: user.displayName || user.email,
-          role: 'admin',
-          monthlyAllowance: 0,
+      const inviteCode = generateInviteCode();
+      const walletRef = doc(collection(db, 'wallets'));
+      const walletData = {
+        name,
+        inviteCode,
+        createdBy: user.uid,
+        members: {
+          [user.uid]: {
+            name: user.displayName || user.email,
+            role: 'admin',
+            monthlyAllowance: 0,
+          },
         },
-      },
-      fixedExpenses: [],
-      createdAt: new Date().toISOString(),
-    };
+        fixedExpenses: [],
+        createdAt: new Date().toISOString(),
+      };
 
-    await setDoc(walletRef, walletData);
+      await setDoc(walletRef, walletData);
 
-    const userRef = doc(db, 'users', user.uid);
-    const userSnap = await getDoc(userRef);
-    const currentWallets = userSnap.data()?.wallets || [];
-    await updateDoc(userRef, { wallets: [...currentWallets, walletRef.id] });
+      const userRef = doc(db, 'users', user.uid);
+      const userSnap = await getDoc(userRef);
+      const currentWallets = userSnap.data()?.wallets || [];
+      await updateDoc(userRef, { wallets: [...currentWallets, walletRef.id] });
 
-    return walletRef.id;
+      return { success: true, walletId: walletRef.id, inviteCode };
+    } catch (error) {
+      return { success: false, message: error.message || '가계부 생성에 실패했습니다' };
+    }
   };
 
   // 초대코드로 합류
-  const joinWallet = async (inviteCode) => {
-    if (!user) throw new Error('로그인이 필요합니다');
-    if (wallets.length >= MAX_WALLETS) throw new Error(`최대 ${MAX_WALLETS}개의 가계부만 참여할 수 있어요`);
+  const joinWallet = async (code) => {
+    try {
+      if (!user) return { success: false, message: '로그인이 필요합니다' };
+      if (wallets.length >= MAX_WALLETS) return { success: false, message: `최대 ${MAX_WALLETS}개의 가계부만 참여할 수 있어요` };
 
-    const walletsRef = collection(db, 'wallets');
-    const q = query(walletsRef, where('inviteCode', '==', inviteCode.toUpperCase()));
-    const snap = await getDocs(q);
+      const walletsRef = collection(db, 'wallets');
+      const q = query(walletsRef, where('inviteCode', '==', code.toUpperCase()));
+      const snap = await getDocs(q);
 
-    if (snap.empty) throw new Error('유효하지 않은 초대코드예요');
+      if (snap.empty) return { success: false, message: '유효하지 않은 초대코드예요' };
 
-    const walletDoc = snap.docs[0];
-    const walletData = walletDoc.data();
+      const walletDoc = snap.docs[0];
+      const walletData = walletDoc.data();
 
-    if (walletData.members[user.uid]) throw new Error('이미 참여 중인 가계부예요');
+      if (walletData.members[user.uid]) return { success: false, message: '이미 참여 중인 가계부예요' };
 
-    await updateDoc(doc(db, 'wallets', walletDoc.id), {
-      [`members.${user.uid}`]: {
-        name: user.displayName || user.email,
-        role: 'member',
-        monthlyAllowance: 0,
-      },
-    });
+      await updateDoc(doc(db, 'wallets', walletDoc.id), {
+        [`members.${user.uid}`]: {
+          name: user.displayName || user.email,
+          role: 'member',
+          monthlyAllowance: 0,
+        },
+      });
 
-    const userRef = doc(db, 'users', user.uid);
-    const userSnap = await getDoc(userRef);
-    const currentWallets = userSnap.data()?.wallets || [];
-    await updateDoc(userRef, { wallets: [...currentWallets, walletDoc.id] });
+      const userRef = doc(db, 'users', user.uid);
+      const userSnap = await getDoc(userRef);
+      const currentWallets = userSnap.data()?.wallets || [];
+      await updateDoc(userRef, { wallets: [...currentWallets, walletDoc.id] });
 
-    return walletDoc.id;
+      return { success: true, walletId: walletDoc.id, walletName: walletData.name };
+    } catch (error) {
+      return { success: false, message: error.message || '가계부 합류에 실패했습니다' };
+    }
   };
 
   // 가계부 전환
@@ -138,34 +146,39 @@ export function WalletProvider({ children }) {
 
   // 가계부 나가기
   const leaveWallet = async (walletId) => {
-    if (!user) return;
-    const walletRef = doc(db, 'wallets', walletId);
-    const walletSnap = await getDoc(walletRef);
-    if (!walletSnap.exists()) return;
+    try {
+      if (!user) return { success: false, message: '로그인이 필요합니다' };
+      const walletRef = doc(db, 'wallets', walletId);
+      const walletSnap = await getDoc(walletRef);
+      if (!walletSnap.exists()) return { success: false, message: '가계부를 찾을 수 없습니다' };
 
-    const data = walletSnap.data();
-    const memberIds = Object.keys(data.members);
+      const data = walletSnap.data();
+      const memberIds = Object.keys(data.members);
 
-    if (memberIds.length === 1) {
-      await deleteDoc(walletRef);
-    } else if (data.members[user.uid]?.role === 'admin') {
-      const nextAdminId = memberIds.find((id) => id !== user.uid);
-      await updateDoc(walletRef, {
-        [`members.${nextAdminId}.role`]: 'admin',
-        [`members.${user.uid}`]: deleteField(),
-      });
-    } else {
-      await updateDoc(walletRef, {
-        [`members.${user.uid}`]: deleteField(),
-      });
+      if (memberIds.length === 1) {
+        await deleteDoc(walletRef);
+      } else if (data.members[user.uid]?.role === 'admin') {
+        const nextAdminId = memberIds.find((id) => id !== user.uid);
+        await updateDoc(walletRef, {
+          [`members.${nextAdminId}.role`]: 'admin',
+          [`members.${user.uid}`]: deleteField(),
+        });
+      } else {
+        await updateDoc(walletRef, {
+          [`members.${user.uid}`]: deleteField(),
+        });
+      }
+
+      const userRef = doc(db, 'users', user.uid);
+      const userSnap = await getDoc(userRef);
+      const currentWallets = (userSnap.data()?.wallets || []).filter((id) => id !== walletId);
+      await updateDoc(userRef, { wallets: currentWallets });
+
+      if (currentWalletId === walletId) setCurrentWalletId(null);
+      return { success: true };
+    } catch (error) {
+      return { success: false, message: error.message || '나가기에 실패했습니다' };
     }
-
-    const userRef = doc(db, 'users', user.uid);
-    const userSnap = await getDoc(userRef);
-    const currentWallets = (userSnap.data()?.wallets || []).filter((id) => id !== walletId);
-    await updateDoc(userRef, { wallets: currentWallets });
-
-    if (currentWalletId === walletId) setCurrentWalletId(null);
   };
 
   // 가계부 목록으로 이동
@@ -177,10 +190,14 @@ export function WalletProvider({ children }) {
 
   // 초대코드 재생성
   const regenerateInviteCode = async () => {
-    if (!currentWalletId || !isAdmin) return null;
-    const newCode = generateInviteCode();
-    await updateDoc(doc(db, 'wallets', currentWalletId), { inviteCode: newCode });
-    return newCode;
+    try {
+      if (!currentWalletId || !isAdmin) return { success: false, message: '권한이 없습니다' };
+      const newCode = generateInviteCode();
+      await updateDoc(doc(db, 'wallets', currentWalletId), { inviteCode: newCode });
+      return { success: true, inviteCode: newCode };
+    } catch (error) {
+      return { success: false, message: error.message || '코드 재생성에 실패했습니다' };
+    }
   };
 
   // 초대 링크 가져오기

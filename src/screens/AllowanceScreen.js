@@ -432,7 +432,7 @@ export default function AllowanceScreen() {
               PERSONAL_CATEGORIES[PERSONAL_CATEGORIES.length - 1];
 
             return (
-              <View key={tx.id} style={[styles.txItem, { borderBottomColor: colors.background }]}>
+              <View key={tx.id} style={[styles.txItem, { borderBottomColor: colors.divider }]}>
                 <View style={[styles.txIconCircle, { backgroundColor: catInfo.color + '20' }]}>
                   <Ionicons name={catInfo.icon} size={20} color={catInfo.color} />
                 </View>
