@@ -43,11 +43,7 @@ const showAlert = (title, message, buttons) => {
   } else { Alert.alert(title, message, buttons); }
 };
 
-// 카테고리 색상 매핑
-const CATEGORY_COLORS = {
-  food: '#FF6B6B', transport: '#4ECDC4', shopping: '#FFE66D', health: '#2BC48A',
-  education: '#5B6BF5', entertainment: '#FF8A5C', housing: '#96BAFF', etc: '#B0B8C1',
-};
+// 카테고리 색상은 ThemeContext의 category 색상 사용 (아래에서 colors.category 참조)
 
 export default function AllowanceScreen() {
   const { colors } = useTheme();
@@ -532,7 +528,7 @@ export default function AllowanceScreen() {
                       styles.circleProgress,
                       {
                         backgroundColor:
-                          remainingPercent > 50 ? '#2ECC71' : remainingPercent > 20 ? '#FFD93D' : '#FF6B6B',
+                          remainingPercent > 50 ? colors.income : remainingPercent > 20 ? colors.warning : colors.expense,
                       },
                     ]}
                   />
@@ -615,10 +611,10 @@ export default function AllowanceScreen() {
 
                 <View style={[styles.reportItem, { backgroundColor: colors.background }]}>
                   <View style={styles.reportItemHeader}>
-                    <Ionicons name="trending-up" size={18} color="#2ECC71" />
+                    <Ionicons name="trending-up" size={18} color={colors.income} />
                     <Text style={[styles.reportItemLabel, { color: colors.textGray }]}>누적 아낀 금액</Text>
                   </View>
-                  <Text style={[styles.reportItemValue, { color: '#2ECC71' }]}>
+                  <Text style={[styles.reportItemValue, { color: colors.income }]}>
                     {formatMoney(report.totalSaved)}
                   </Text>
                   <Text style={[styles.reportItemSub, { color: colors.textGray }]}>
@@ -638,13 +634,13 @@ export default function AllowanceScreen() {
                 </View>
 
                 <View
-                  style={[styles.reportItemWide, { backgroundColor: '#2ECC7115', borderColor: '#2ECC7133' }]}
+                  style={[styles.reportItemWide, { backgroundColor: colors.income + '15', borderColor: colors.income + '33' }]}
                 >
                   <View style={styles.reportItemWideLeft}>
-                    <Ionicons name="rocket-outline" size={24} color="#2ECC71" />
+                    <Ionicons name="rocket-outline" size={24} color={colors.income} />
                     <View style={{ marginLeft: 12 }}>
                       <Text style={[styles.reportItemLabel, { color: colors.textGray }]}>이 추세로 1년 모으면</Text>
-                      <Text style={[styles.reportItemValueLarge, { color: '#2ECC71' }]}>
+                      <Text style={[styles.reportItemValueLarge, { color: colors.income }]}>
                         {formatMoney(report.projectedYearly)}
                       </Text>
                     </View>
@@ -697,7 +693,7 @@ export default function AllowanceScreen() {
                 </View>
               ) : (
                 report.currentMonthTxs.map((tx) => {
-                  const catColor = CATEGORY_COLORS[tx.category] || colors.category?.[tx.category] || '#95A5A6';
+                  const catColor = colors.category?.[tx.category] || '#95A5A6';
                   const catIcon = ALL_CATEGORY_ICONS[tx.category] || 'ellipsis-horizontal-outline';
                   const catName = ALL_CATEGORY_NAMES[tx.category] || tx.category;
                   return (
@@ -748,7 +744,7 @@ export default function AllowanceScreen() {
             <Text style={[styles.modalLabel, { color: colors.textGray }]}>카테고리</Text>
             <View style={styles.categoryGrid}>
               {EXPENSE_CATEGORIES.map((cat) => {
-                const catColor = CATEGORY_COLORS[cat.id] || colors.primary;
+                const catColor = colors.category?.[cat.id] || colors.primary;
                 return (
                   <TouchableOpacity
                     key={cat.id}

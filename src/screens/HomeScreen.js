@@ -333,7 +333,7 @@ export default function HomeScreen() {
               <View style={styles.myAllowanceBar}>
                 <View style={[styles.myAllowanceBarFill, { 
                   width: `${myAllowancePct}%`,
-                  backgroundColor: myAllowancePct >= 90 ? '#FF6B6B' : myAllowancePct >= 70 ? '#FFD93D' : '#2ECC71'
+                  backgroundColor: myAllowancePct >= 90 ? Colors.expense : myAllowancePct >= 70 ? Colors.warning : Colors.income
                 }]} />
               </View>
               <View style={styles.myAllowanceFooter}>
