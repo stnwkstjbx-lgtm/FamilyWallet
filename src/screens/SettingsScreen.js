@@ -9,6 +9,7 @@ import { useTheme } from '../constants/ThemeContext';
 import { useAuth } from '../constants/AuthContext';
 import { useWallet } from '../constants/WalletContext';
 import { FUND_TYPES, FUND_TYPE_MAP } from '../constants/categories';
+import { formatAmountInput, parseAmount, validateAmount } from '../utils/format';
 import { db } from '../firebase/firebaseConfig';
 import {
   collection, onSnapshot, addDoc, deleteDoc, doc, updateDoc, query,
@@ -111,7 +112,7 @@ export default function SettingsScreen() {
 
   const handleSetAllowance = async () => {
     if (!selectedMember) return;
-    const amt = parseInt(allowanceAmount) || 0;
+    const amt = parseAmount(allowanceAmount);
     await updateDoc(doc(db, 'wallets', currentWalletId), {
       [`members.${selectedMember.uid}.allowance`]: amt,
     });
@@ -120,11 +121,14 @@ export default function SettingsScreen() {
   };
 
   const handleAddFixed = async () => {
+    const numAmount = parseAmount(fixedAmount);
+    const amtCheck = validateAmount(numAmount);
     if (!fixedName || !fixedAmount || !fixedDay) { showAlert('알림', '모든 항목을 입력해 주세요!'); return; }
+    if (!amtCheck.valid) { showAlert('알림', amtCheck.message); return; }
     const day = parseInt(fixedDay);
     if (day < 1 || day > 31) { showAlert('알림', '1~31 사이 입력!'); return; }
     const docData = {
-      name: fixedName, amount: parseInt(fixedAmount), day, type: fixedType,
+      name: fixedName, amount: numAmount, day, type: fixedType,
       lastRecordedMonth: '', createdAt: new Date().toISOString(),
     };
     if (fixedType === 'expense') docData.fundType = fixedFundType;
@@ -170,7 +174,7 @@ export default function SettingsScreen() {
   };
 
   const handleSaveBudget = async () => {
-    const amt = parseInt(budgetAmount) || 0;
+    const amt = parseAmount(budgetAmount);
     const result = await setSharedBudget(amt);
     if (result.success) {
       showAlert('설정 완료', amt > 0 ? `공금 월 예산: ${amt.toLocaleString('ko-KR')}원` : '공금 예산이 해제되었습니다.');
@@ -272,7 +276,9 @@ export default function SettingsScreen() {
   const handleDeleteAccount = async () => {
     setDeleteLoading(true);
     const isEmailUser = user?.providerData?.[0]?.providerId === 'password';
-    const result = await deleteAccount(isEmailUser ? deletePassword : null);
+    const pw = isEmailUser ? deletePassword : null;
+    setDeletePassword(''); // 즉시 메모리에서 제거
+    const result = await deleteAccount(pw);
     setDeleteLoading(false);
     if (result.success) {
       setShowDeleteModal(false);
@@ -429,7 +435,7 @@ export default function SettingsScreen() {
                   </View>
                   <TouchableOpacity
                     style={styles.sharedBudgetBtn}
-                    onPress={() => { setBudgetAmount(monthlyBudget > 0 ? String(monthlyBudget) : ''); setShowBudgetModal(true); }}
+                    onPress={() => { setBudgetAmount(monthlyBudget > 0 ? monthlyBudget.toLocaleString('ko-KR') : ''); setShowBudgetModal(true); }}
                   >
                     <Ionicons name="create-outline" size={16} color={Colors.primary} />
                     <Text style={styles.sharedBudgetBtnText}>{monthlyBudget > 0 ? '수정' : '설정'}</Text>
@@ -499,7 +505,7 @@ export default function SettingsScreen() {
                           <Ionicons name="shield-checkmark" size={14} color={m.role === 'admin' ? '#fff' : Colors.primary} />
                         </TouchableOpacity>
                       )}
-                      <TouchableOpacity style={styles.allowBtn} onPress={() => { setSelectedMember(m); setAllowanceAmount(String(allow)); setShowAllowanceModal(true); }}>
+                      <TouchableOpacity style={styles.allowBtn} onPress={() => { setSelectedMember(m); setAllowanceAmount(allow > 0 ? allow.toLocaleString('ko-KR') : ''); setShowAllowanceModal(true); }}>
                         <Text style={styles.allowBtnText}>용돈</Text>
                       </TouchableOpacity>
                     </View>
@@ -592,8 +598,8 @@ export default function SettingsScreen() {
       <Modal visible={showAllowanceModal} transparent animationType="slide">
         <View style={styles.modalOverlay}><View style={styles.modalContent}>
           <Text style={styles.modalTitle}>💰 {selectedMember?.name} 용돈</Text>
-          <TextInput style={styles.modalInput} placeholder="금액" placeholderTextColor={Colors.textLight} keyboardType="numeric" value={allowanceAmount} onChangeText={(t) => setAllowanceAmount(t.replace(/[^0-9]/g, ''))} />
-          {allowanceAmount && allowanceAmount !== '0' ? <Text style={styles.preview}>{parseInt(allowanceAmount).toLocaleString('ko-KR')}원</Text> : null}
+          <TextInput style={styles.modalInput} placeholder="금액" placeholderTextColor={Colors.textLight} keyboardType="numeric" value={allowanceAmount} onChangeText={(t) => setAllowanceAmount(formatAmountInput(t))} />
+          {allowanceAmount && allowanceAmount !== '0' ? <Text style={styles.preview}>{parseAmount(allowanceAmount).toLocaleString('ko-KR')}원</Text> : null}
           <View style={styles.modalBtns}>
             <TouchableOpacity style={styles.modalCancelBtn} onPress={() => setShowAllowanceModal(false)}><Text style={styles.modalCancelText}>취소</Text></TouchableOpacity>
             <TouchableOpacity style={styles.modalSaveBtn} onPress={handleSetAllowance}><Text style={styles.modalSaveText}>설정</Text></TouchableOpacity>
@@ -635,7 +641,7 @@ export default function SettingsScreen() {
               ))}
             </View>
           )}
-          <TextInput style={styles.modalInput} placeholder="금액" placeholderTextColor={Colors.textLight} keyboardType="numeric" value={fixedAmount} onChangeText={(t) => setFixedAmount(t.replace(/[^0-9]/g, ''))} />
+          <TextInput style={styles.modalInput} placeholder="금액" placeholderTextColor={Colors.textLight} keyboardType="numeric" value={fixedAmount} onChangeText={(t) => setFixedAmount(formatAmountInput(t))} />
           <TextInput style={styles.modalInput} placeholder="항목명" placeholderTextColor={Colors.textLight} value={fixedName} onChangeText={setFixedName} />
           <View style={styles.dayRow}><Text style={styles.dayLabel}>매월</Text><TextInput style={styles.dayInput} placeholder="5" placeholderTextColor={Colors.textLight} keyboardType="numeric" maxLength={2} value={fixedDay} onChangeText={(t) => setFixedDay(t.replace(/[^0-9]/g, ''))} /><Text style={styles.dayLabel}>일</Text></View>
           <View style={styles.modalBtns}>
@@ -696,11 +702,11 @@ export default function SettingsScreen() {
             placeholderTextColor={Colors.textLight}
             keyboardType="numeric"
             value={budgetAmount}
-            onChangeText={(t) => setBudgetAmount(t.replace(/[^0-9]/g, ''))}
+            onChangeText={(t) => setBudgetAmount(formatAmountInput(t))}
           />
           {budgetAmount && budgetAmount !== '0' ? (
             <Text style={[styles.preview, { color: Colors.primary }]}>
-              월 {parseInt(budgetAmount).toLocaleString('ko-KR')}원
+              월 {parseAmount(budgetAmount).toLocaleString('ko-KR')}원
             </Text>
           ) : null}
           <View style={styles.modalBtns}>

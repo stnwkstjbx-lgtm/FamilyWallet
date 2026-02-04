@@ -31,6 +31,7 @@ import { useTheme } from '../constants/ThemeContext';
 import { EXPENSE_CATEGORIES, ALL_CATEGORY_NAMES, ALL_CATEGORY_ICONS } from '../constants/categories';
 import { db } from '../firebase/firebaseConfig';
 import { collection, query, where, onSnapshot, addDoc, orderBy, doc, updateDoc } from 'firebase/firestore';
+import { formatAmountInput, parseAmount, validateAmount } from '../utils/format';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -233,11 +234,9 @@ export default function AllowanceScreen() {
       showAlert('알림', '카테고리를 선택해주세요');
       return;
     }
-    const amount = parseInt(expenseAmount);
-    if (!amount || amount <= 0) {
-      showAlert('알림', '금액을 입력해주세요');
-      return;
-    }
+    const amount = parseAmount(expenseAmount);
+    const amtCheck = validateAmount(amount);
+    if (!amtCheck.valid) { showAlert('알림', amtCheck.message); return; }
     try {
       const txRef = collection(db, 'wallets', currentWalletId, 'transactions');
       await addDoc(txRef, {
@@ -264,11 +263,9 @@ export default function AllowanceScreen() {
 
   // ───── 용돈 요청 핸들러 ─────
   const handleRequestAllowance = async () => {
-    const amount = parseInt(requestAmount);
-    if (!amount || amount <= 0) {
-      showAlert('알림', '금액을 입력해주세요');
-      return;
-    }
+    const amount = parseAmount(requestAmount);
+    const amtCheck = validateAmount(amount);
+    if (!amtCheck.valid) { showAlert('알림', amtCheck.message); return; }
     setRequestLoading(true);
     const result = await requestAllowance(amount, requestMessage);
     setRequestLoading(false);
@@ -286,11 +283,9 @@ export default function AllowanceScreen() {
   const handleApproveRequest = async () => {
     if (!selectedRequest) return;
     if (!isAdmin) { showAlert('권한 없음', '관리자만 요청을 승인할 수 있습니다.'); return; }
-    const amount = parseInt(approveAmount);
-    if (!amount || amount <= 0) {
-      showAlert('알림', '금액을 입력해주세요');
-      return;
-    }
+    const amount = parseAmount(approveAmount);
+    const amtCheck = validateAmount(amount);
+    if (!amtCheck.valid) { showAlert('알림', amtCheck.message); return; }
     setApproveLoading(true);
     const result = await respondToAllowanceRequest(selectedRequest.id, true, amount);
     setApproveLoading(false);
@@ -324,7 +319,7 @@ export default function AllowanceScreen() {
   const handleSetAllowance = async () => {
     if (!selectedMember) return;
     if (!isAdmin) { showAlert('권한 없음', '관리자만 용돈을 설정할 수 있습니다.'); return; }
-    const amt = parseInt(setAllowanceAmount) || 0;
+    const amt = parseAmount(setAllowanceAmount);
     setSetAllowanceLoading(true);
     try {
       await updateDoc(doc(db, 'wallets', currentWalletId), {
@@ -387,7 +382,7 @@ export default function AllowanceScreen() {
                     style={[styles.requestBtn, { backgroundColor: colors.primary }]}
                     onPress={() => {
                       setSelectedRequest(req);
-                      setApproveAmount(String(req.amount));
+                      setApproveAmount(req.amount ? req.amount.toLocaleString('ko-KR') : '');
                       setShowApproveModal(true);
                     }}
                   >
@@ -424,7 +419,7 @@ export default function AllowanceScreen() {
                 style={[styles.memberRow, { borderBottomColor: colors.divider }]}
                 onPress={() => {
                   setSelectedMember(m);
-                  setSetAllowanceAmount(String(allow));
+                  setSetAllowanceAmount(allow > 0 ? allow.toLocaleString('ko-KR') : '');
                   setShowSetAllowanceModal(true);
                 }}
                 activeOpacity={0.6}
@@ -792,7 +787,7 @@ export default function AllowanceScreen() {
               placeholderTextColor={colors.textGray + '88'}
               keyboardType="number-pad"
               value={expenseAmount}
-              onChangeText={setExpenseAmount}
+              onChangeText={(t) => setExpenseAmount(formatAmountInput(t))}
             />
 
             <Text style={[styles.modalLabel, { color: colors.textGray }]}>메모 (선택)</Text>
@@ -839,11 +834,11 @@ export default function AllowanceScreen() {
               placeholderTextColor={colors.textGray + '88'}
               keyboardType="number-pad"
               value={requestAmount}
-              onChangeText={(t) => setRequestAmount(t.replace(/[^0-9]/g, ''))}
+              onChangeText={(t) => setRequestAmount(formatAmountInput(t))}
             />
             {requestAmount ? (
               <Text style={[styles.previewAmount, { color: colors.primary }]}>
-                {parseInt(requestAmount).toLocaleString()}원
+                {parseAmount(requestAmount).toLocaleString()}원
               </Text>
             ) : null}
 
@@ -913,11 +908,11 @@ export default function AllowanceScreen() {
               placeholderTextColor={colors.textGray + '88'}
               keyboardType="number-pad"
               value={approveAmount}
-              onChangeText={(t) => setApproveAmount(t.replace(/[^0-9]/g, ''))}
+              onChangeText={(t) => setApproveAmount(formatAmountInput(t))}
             />
             {approveAmount ? (
               <Text style={[styles.previewAmount, { color: colors.primary }]}>
-                {parseInt(approveAmount).toLocaleString()}원
+                {parseAmount(approveAmount).toLocaleString()}원
               </Text>
             ) : null}
 
@@ -958,11 +953,11 @@ export default function AllowanceScreen() {
               placeholderTextColor={colors.textGray + '88'}
               keyboardType="number-pad"
               value={setAllowanceAmount}
-              onChangeText={(t) => setSetAllowanceAmount(t.replace(/[^0-9]/g, ''))}
+              onChangeText={(t) => setSetAllowanceAmount(formatAmountInput(t))}
             />
             {setAllowanceAmount && setAllowanceAmount !== '0' ? (
               <Text style={[styles.previewAmount, { color: colors.primary }]}>
-                {parseInt(setAllowanceAmount).toLocaleString()}원
+                {parseAmount(setAllowanceAmount).toLocaleString()}원
               </Text>
             ) : null}
 

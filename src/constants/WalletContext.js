@@ -20,16 +20,18 @@ import {
   onSnapshot,
   addDoc,
   getDocs,
+  writeBatch,
 } from 'firebase/firestore';
 import { db } from '../firebase/firebaseConfig';
 import { useAuth } from './AuthContext';
 import NotificationService from '../services/NotificationService';
 import { ASSET_FUND_TYPES, FUND_TYPE_MAP } from './categories';
+import { MAX_WALLETS, MAX_ADMINS, VALID_FUND_TYPES, MAX_AMOUNT } from './limits';
+import { validateFundType } from '../utils/format';
 
 const WalletContext = createContext();
 export const useWallet = () => useContext(WalletContext);
 
-const MAX_WALLETS = 3;
 export const maxWallets = MAX_WALLETS;
 
 export function WalletProvider({ children }) {
@@ -277,8 +279,7 @@ export function WalletProvider({ children }) {
     }
   };
 
-  // 관리자 지정/해제 (최대 3명)
-  const MAX_ADMINS = 3;
+  // 관리자 지정/해제 (최대 MAX_ADMINS명)
   const toggleAdmin = async (targetUid) => {
     try {
       if (!currentWalletId || !isAdmin || !user) return { success: false, message: '권한이 없습니다' };
@@ -369,16 +370,30 @@ export function WalletProvider({ children }) {
   // ══════════════════════════════════════════
 
   const addTransaction = async (transactionData) => {
-    if (!currentWalletId || !user) return;
-    if (!transactionData?.amount || typeof transactionData.amount !== 'number' || transactionData.amount <= 0) return;
-    const txRef = collection(db, 'wallets', currentWalletId, 'transactions');
-    const myNickname = currentWallet?.members?.[user.uid]?.name || user.displayName || user.email;
-    await addDoc(txRef, {
-      ...transactionData,
-      memberId: user.uid,
-      memberName: myNickname,
-      createdAt: new Date().toISOString(),
-    });
+    if (!currentWalletId || !user) return { success: false, message: '로그인이 필요합니다' };
+    if (!transactionData?.amount || typeof transactionData.amount !== 'number' || transactionData.amount <= 0) {
+      return { success: false, message: '유효하지 않은 금액입니다' };
+    }
+    if (transactionData.amount > MAX_AMOUNT) {
+      return { success: false, message: `최대 ${MAX_AMOUNT.toLocaleString()}원까지 입력 가능합니다` };
+    }
+    // fundType 유효성 검증
+    if (transactionData.fundType) {
+      transactionData.fundType = validateFundType(transactionData.fundType);
+    }
+    try {
+      const txRef = collection(db, 'wallets', currentWalletId, 'transactions');
+      const myNickname = currentWallet?.members?.[user.uid]?.name || user.displayName || user.email;
+      await addDoc(txRef, {
+        ...transactionData,
+        memberId: user.uid,
+        memberName: myNickname,
+        createdAt: new Date().toISOString(),
+      });
+      return { success: true };
+    } catch (error) {
+      return { success: false, message: error.message || '저장에 실패했습니다' };
+    }
   };
 
   // ══════════════════════════════════════════
@@ -386,49 +401,59 @@ export function WalletProvider({ children }) {
   // ══════════════════════════════════════════
 
   const allocateAllowance = async (memberId, amount, yearMonth) => {
-    if (!currentWalletId || !user) return;
-    if (!isAdmin) {
-      throw new Error('관리자만 용돈을 배분할 수 있어요');
-    }
+    if (!currentWalletId || !user) return { success: false, message: '로그인이 필요합니다' };
+    if (!isAdmin) return { success: false, message: '관리자만 용돈을 배분할 수 있어요' };
     if (!memberId || typeof amount !== 'number' || amount < 0) {
-      throw new Error('유효하지 않은 용돈 배분 데이터입니다');
+      return { success: false, message: '유효하지 않은 용돈 배분 데이터입니다' };
     }
 
-    const now = new Date();
-    const ym = yearMonth || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    const memberName = currentWallet?.members?.[memberId]?.name || '멤버';
+    try {
+      const now = new Date();
+      const ym = yearMonth || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+      const memberName = currentWallet?.members?.[memberId]?.name || '멤버';
+      const myNickname = currentWallet?.members?.[user.uid]?.name || user.displayName || user.email;
 
-    await updateDoc(doc(db, 'wallets', currentWalletId), {
-      [`members.${memberId}.monthlyAllowance`]: amount,
-    });
+      // batch write로 원자적 처리
+      const batch = writeBatch(db);
 
-    const txRef = collection(db, 'wallets', currentWalletId, 'transactions');
-    const existingQ = query(
-      txRef,
-      where('fundType', '==', 'allowance_allocation'),
-      where('allocatedTo', '==', memberId),
-      where('allocMonth', '==', ym)
-    );
-    const existingSnap = await getDocs(existingQ);
-    for (const d of existingSnap.docs) {
-      await deleteDoc(d.ref);
+      // 1. 월 용돈 설정
+      batch.update(doc(db, 'wallets', currentWalletId), {
+        [`members.${memberId}.monthlyAllowance`]: amount,
+      });
+
+      // 2. 기존 배분 기록 삭제
+      const txRef = collection(db, 'wallets', currentWalletId, 'transactions');
+      const existingQ = query(
+        txRef,
+        where('fundType', '==', 'allowance_allocation'),
+        where('allocatedTo', '==', memberId),
+        where('allocMonth', '==', ym)
+      );
+      const existingSnap = await getDocs(existingQ);
+      existingSnap.docs.forEach((d) => batch.delete(d.ref));
+
+      // 3. 새 배분 기록 추가
+      const newTxRef = doc(txRef);
+      batch.set(newTxRef, {
+        type: 'expense',
+        fundType: 'allowance_allocation',
+        category: FUND_TYPE_MAP.personal?.name || '용돈',
+        amount,
+        description: `${memberName} 용돈 (${ym})`,
+        date: `${ym}-01`,
+        allocMonth: ym,
+        allocatedTo: memberId,
+        allocatedToName: memberName,
+        memberId: user.uid,
+        memberName: myNickname,
+        createdAt: new Date().toISOString(),
+      });
+
+      await batch.commit();
+      return { success: true };
+    } catch (error) {
+      return { success: false, message: error.message || '용돈 배분에 실패했습니다' };
     }
-
-    const myNickname = currentWallet?.members?.[user.uid]?.name || user.displayName || user.email;
-    await addDoc(txRef, {
-      type: 'expense',
-      fundType: 'allowance_allocation',
-      category: FUND_TYPE_MAP.personal?.name || '용돈',
-      amount,
-      description: `${memberName} 용돈 (${ym})`,
-      date: `${ym}-01`,
-      allocMonth: ym,
-      allocatedTo: memberId,
-      allocatedToName: memberName,
-      memberId: user.uid,
-      memberName: myNickname,
-      createdAt: new Date().toISOString(),
-    });
   };
 
   const addPersonalExpense = async ({ category, amount, description, date }) => {
@@ -653,7 +678,8 @@ export function WalletProvider({ children }) {
       NotificationService.registerForPushNotifications().then((token) => {
         if (token) {
           // 토큰을 사용자 문서에 저장 (추후 서버 푸시용)
-          setDoc(doc(db, 'users', user.uid), { pushToken: token }, { merge: true }).catch(() => {});
+          setDoc(doc(db, 'users', user.uid), { pushToken: token }, { merge: true })
+            .catch((err) => { if (__DEV__) console.warn('푸시 토큰 저장 실패:', err.message); });
         }
       });
     }

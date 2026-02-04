@@ -11,6 +11,7 @@ import { useWallet } from '../constants/WalletContext';
 import { EXPENSE_CATEGORIES, INCOME_CATEGORIES, FUND_TYPES, FUND_TYPE_MAP } from '../constants/categories';
 import { db } from '../firebase/firebaseConfig';
 import { collection, addDoc } from 'firebase/firestore';
+import { formatAmountInput, parseAmount, validateAmount, validateFundType } from '../utils/format';
 
 const FIXED_EXPENSE_PRESETS = [
   { name: '월세', icon: 'home-outline' },
@@ -59,7 +60,9 @@ export default function AddScreen() {
   const myAllowance = currentWallet?.members?.[user?.uid]?.allowance || 0;
 
   const handleSave = async () => {
-    if (!amount || amount === '0') { showAlert('알림', '금액을 입력해 주세요!'); return; }
+    const numAmount = parseAmount(amount);
+    const amtCheck = validateAmount(numAmount);
+    if (!amtCheck.valid) { showAlert('알림', amtCheck.message); return; }
     if (!selectedCategory) { showAlert('알림', '카테고리를 선택해 주세요!'); return; }
     if (!currentWalletId) { showAlert('알림', '가계부가 선택되지 않았습니다.'); return; }
     if (!user?.uid) { showAlert('오류', '로그인 정보를 확인할 수 없습니다. 다시 로그인해 주세요.'); return; }
@@ -67,7 +70,7 @@ export default function AddScreen() {
     try {
       const txData = {
         type,
-        amount: parseInt(amount),
+        amount: numAmount,
         category: selectedCategory,
         memo,
         member: myWalletName,
@@ -76,16 +79,16 @@ export default function AddScreen() {
         createdAt: new Date().toISOString(),
       };
 
-      // 지출일 때만 fundType 추가
+      // 지출일 때만 fundType 추가 (유효성 검증)
       if (type === 'expense') {
-        txData.fundType = fundType;
+        txData.fundType = validateFundType(fundType);
       }
 
       await addDoc(collection(db, 'wallets', currentWalletId, 'transactions'), txData);
 
       const fundLabel = type === 'expense' ? ` (${FUND_TYPE_MAP[fundType]?.name || '공금'})` : '';
       showAlert('저장 완료! ✅',
-        `${myWalletName}님의 ${type === 'expense' ? '지출' : '수입'}${fundLabel}\n${parseInt(amount).toLocaleString('ko-KR')}원이 기록되었습니다.`
+        `${myWalletName}님의 ${type === 'expense' ? '지출' : '수입'}${fundLabel}\n${parseAmount(amount).toLocaleString('ko-KR')}원이 기록되었습니다.`
       );
 
       setAmount(''); setSelectedCategory(null); setMemo('');
@@ -96,8 +99,10 @@ export default function AddScreen() {
   };
 
   const handleSaveFixed = async () => {
+    const numAmount = parseAmount(amount);
+    const amtCheck = validateAmount(numAmount);
     if (!fixedName.trim()) { showAlert('알림', '항목명을 입력해 주세요!'); return; }
-    if (!amount || amount === '0') { showAlert('알림', '금액을 입력해 주세요!'); return; }
+    if (!amtCheck.valid) { showAlert('알림', amtCheck.message); return; }
     if (!fixedDay) { showAlert('알림', '날짜를 입력해 주세요!'); return; }
     const day = parseInt(fixedDay);
     if (day < 1 || day > 31) { showAlert('알림', '1~31 사이 날짜를 입력해 주세요!'); return; }
@@ -105,7 +110,7 @@ export default function AddScreen() {
     const label = fixedType === 'income' ? '수입' : '지출';
     try {
       const docData = {
-        name: fixedName.trim(), amount: parseInt(amount), day, type: fixedType,
+        name: fixedName.trim(), amount: numAmount, day, type: fixedType,
         lastRecordedMonth: '', createdAt: new Date().toISOString(),
       };
       if (fixedType === 'expense') docData.fundType = fixedFundType;
@@ -210,14 +215,14 @@ export default function AddScreen() {
                 <View style={styles.inputCard}>
                   <Text style={styles.inputLabel}>금액</Text>
                   <View style={styles.amountRow}>
-                    <TextInput style={styles.amountInput} placeholder="0" placeholderTextColor={Colors.textLight} keyboardType="numeric" value={amount} onChangeText={(t) => setAmount(t.replace(/[^0-9]/g, ''))} />
+                    <TextInput style={styles.amountInput} placeholder="0" placeholderTextColor={Colors.textLight} keyboardType="numeric" value={amount} onChangeText={(t) => setAmount(formatAmountInput(t))} />
                     <Text style={styles.wonText}>원</Text>
                   </View>
                   {amount ? (
                     <View style={styles.amountPreviewRow}>
                       <View style={[styles.amountPreviewDot, { backgroundColor: fixedType === 'income' ? Colors.income : Colors.expense }]} />
                       <Text style={[styles.amountPreview, { color: fixedType === 'income' ? Colors.income : Colors.expense }]}>
-                        매월 {fixedType === 'income' ? '+' : '-'}{parseInt(amount).toLocaleString('ko-KR')}원
+                        매월 {fixedType === 'income' ? '+' : '-'}{parseAmount(amount).toLocaleString('ko-KR')}원
                       </Text>
                     </View>
                   ) : null}
@@ -331,14 +336,14 @@ export default function AddScreen() {
                 <View style={styles.inputCard}>
                   <Text style={styles.inputLabel}>금액</Text>
                   <View style={styles.amountRow}>
-                    <TextInput style={styles.amountInput} placeholder="0" placeholderTextColor={Colors.textLight} keyboardType="numeric" value={amount} onChangeText={(t) => setAmount(t.replace(/[^0-9]/g, ''))} />
+                    <TextInput style={styles.amountInput} placeholder="0" placeholderTextColor={Colors.textLight} keyboardType="numeric" value={amount} onChangeText={(t) => setAmount(formatAmountInput(t))} />
                     <Text style={styles.wonText}>원</Text>
                   </View>
                   {amount ? (
                     <View style={styles.amountPreviewRow}>
                       <View style={[styles.amountPreviewDot, { backgroundColor: type === 'expense' ? Colors.expense : Colors.income }]} />
                       <Text style={[styles.amountPreview, { color: type === 'expense' ? Colors.expense : Colors.income }]}>
-                        {type === 'expense' ? '- ' : '+ '}{parseInt(amount).toLocaleString('ko-KR')}원
+                        {type === 'expense' ? '- ' : '+ '}{parseAmount(amount).toLocaleString('ko-KR')}원
                       </Text>
                     </View>
                   ) : null}

@@ -7,12 +7,20 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../constants/ThemeContext';
 import { useAuth } from '../constants/AuthContext';
+import { MIN_PASSWORD_LENGTH } from '../constants/limits';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 const showAlert = (title, message) => {
   if (Platform.OS === 'web') window.alert(`${title}\n\n${message}`);
   else Alert.alert(title, message);
+};
+
+const validatePassword = (pw) => {
+  if (pw.length < MIN_PASSWORD_LENGTH) return `비밀번호는 ${MIN_PASSWORD_LENGTH}자 이상이어야 합니다.`;
+  if (!/[A-Za-z]/.test(pw)) return '비밀번호에 영문자를 포함해 주세요.';
+  if (!/[0-9]/.test(pw)) return '비밀번호에 숫자를 포함해 주세요.';
+  return null;
 };
 
 export default function LoginScreen({ initialMode }) {
@@ -34,6 +42,10 @@ export default function LoginScreen({ initialMode }) {
     setError('');
     if (!email.trim() || !password.trim()) { setError('이메일과 비밀번호를 입력해 주세요.'); return; }
     if (!isLogin && !name.trim()) { setError('이름을 입력해 주세요.'); return; }
+    if (!isLogin) {
+      const pwError = validatePassword(password);
+      if (pwError) { setError(pwError); return; }
+    }
 
     setLoading(true);
     const result = isLogin
@@ -152,7 +164,7 @@ export default function LoginScreen({ initialMode }) {
 
               <View style={styles.inputGroup}>
                 <Ionicons name="lock-closed-outline" size={18} color={Colors.textGray} style={styles.inputIcon} />
-                <TextInput style={styles.input} placeholder="비밀번호 (6자 이상)" placeholderTextColor={Colors.textLight}
+                <TextInput style={styles.input} placeholder={isLogin ? '비밀번호' : `비밀번호 (영문+숫자 ${MIN_PASSWORD_LENGTH}자 이상)`} placeholderTextColor={Colors.textLight}
                   value={password} onChangeText={setPassword} secureTextEntry={!showPassword} />
                 <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={styles.eyeBtn}>
                   <Ionicons name={showPassword ? 'eye-outline' : 'eye-off-outline'} size={20} color={Colors.textGray} />

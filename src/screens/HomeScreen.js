@@ -9,6 +9,7 @@ import { useTheme } from '../constants/ThemeContext';
 import { useAuth } from '../constants/AuthContext';
 import { useWallet } from '../constants/WalletContext';
 import { ALL_CATEGORY_NAMES, ALL_CATEGORY_ICONS, EXPENSE_CATEGORIES, INCOME_CATEGORIES, FUND_TYPE_MAP, FUND_TYPES } from '../constants/categories';
+import { formatAmountInput, parseAmount, validateAmount, validateFundType } from '../utils/format';
 import { db } from '../firebase/firebaseConfig';
 import {
   collection, onSnapshot, orderBy, query, deleteDoc, doc, getDocs, updateDoc, addDoc,
@@ -75,10 +76,10 @@ export default function HomeScreen() {
     return () => unsub();
   }, [currentWalletId]);
 
-  // 고정 지출/수입 자동 기록
+  // 고정 지출/수입 자동 기록 (DB의 lastRecordedMonth로 중복 방지)
   useEffect(() => {
     if (!isAdmin || !currentWalletId || autoRecordDone.current) return;
-    autoRecordDone.current = true;
+    autoRecordDone.current = true;  // 컴포넌트 내 중복 방지
     const autoRecord = async () => {
       try {
         const now = new Date();
@@ -129,17 +130,19 @@ export default function HomeScreen() {
   }, [showQuickAdd]);
 
   const handleEdit = (item) => {
-    setEditingItem(item); setEditAmount(String(item.amount));
+    setEditingItem(item); setEditAmount(item.amount ? item.amount.toLocaleString('ko-KR') : '');
     setEditCategory(item.category); setEditMemo(item.memo || '');
     setEditType(item.type); setEditFundType(item.fundType || 'shared');
     setShowEditModal(true);
   };
-  
+
   const handleSaveEdit = async () => {
-    if (!editAmount || editAmount === '0') { showAlert('알림', '금액을 입력해 주세요!'); return; }
+    const numAmount = parseAmount(editAmount);
+    const amtCheck = validateAmount(numAmount);
+    if (!amtCheck.valid) { showAlert('알림', amtCheck.message); return; }
     try {
-      const updateData = { amount: parseInt(editAmount), category: editCategory, memo: editMemo, type: editType };
-      if (editType === 'expense') updateData.fundType = editFundType;
+      const updateData = { amount: numAmount, category: editCategory, memo: editMemo, type: editType };
+      if (editType === 'expense') updateData.fundType = validateFundType(editFundType);
       await updateDoc(doc(db, 'wallets', currentWalletId, 'transactions', editingItem.id), updateData);
       setShowEditModal(false); showAlert('수정 완료! ✅', '내역이 수정되었습니다.');
     } catch (error) { showAlert('오류', '수정에 실패했습니다.'); }
@@ -154,13 +157,15 @@ export default function HomeScreen() {
 
   // ★ 빠른 등록
   const handleQuickAdd = async () => {
-    if (!quickAmount || quickAmount === '0') { showAlert('알림', '금액을 입력해 주세요!'); return; }
+    const numAmount = parseAmount(quickAmount);
+    const amtCheck = validateAmount(numAmount);
+    if (!amtCheck.valid) { showAlert('알림', amtCheck.message); return; }
     if (!quickCategory) { showAlert('알림', '카테고리를 선택해 주세요!'); return; }
-    
+
     try {
       const txData = {
         type: quickType,
-        amount: parseInt(quickAmount),
+        amount: numAmount,
         category: quickCategory,
         memo: quickMemo || '',
         date: new Date().toISOString(),
@@ -168,7 +173,7 @@ export default function HomeScreen() {
         member: currentWallet?.members?.[user.uid]?.name || userProfile?.name || user.displayName || '미지정',
         createdAt: new Date().toISOString(),
       };
-      if (quickType === 'expense') txData.fundType = quickFundType;
+      if (quickType === 'expense') txData.fundType = validateFundType(quickFundType);
       
       await addDoc(collection(db, 'wallets', currentWalletId, 'transactions'), txData);
       
@@ -185,15 +190,17 @@ export default function HomeScreen() {
 
   // ★ 고정 지출/수입 빠른 등록
   const handleQuickAddFixed = async () => {
+    const numAmount = parseAmount(quickAmount);
+    const amtCheck = validateAmount(numAmount);
     if (!fixedName.trim()) { showAlert('알림', '항목명을 입력해 주세요!'); return; }
-    if (!quickAmount || quickAmount === '0') { showAlert('알림', '금액을 입력해 주세요!'); return; }
+    if (!amtCheck.valid) { showAlert('알림', amtCheck.message); return; }
     if (!fixedDay) { showAlert('알림', '날짜를 입력해 주세요!'); return; }
     const day = parseInt(fixedDay);
     if (day < 1 || day > 31) { showAlert('알림', '1~31 사이 날짜를 입력해 주세요!'); return; }
     const label = fixedType === 'income' ? '수입' : '지출';
     try {
       const docData = {
-        name: fixedName.trim(), amount: parseInt(quickAmount), day, type: fixedType,
+        name: fixedName.trim(), amount: numAmount, day, type: fixedType,
         lastRecordedMonth: '', createdAt: new Date().toISOString(),
       };
       if (fixedType === 'expense') docData.fundType = quickFundType;
@@ -989,11 +996,11 @@ export default function HomeScreen() {
                   placeholderTextColor={Colors.textLight}
                   keyboardType="number-pad"
                   value={quickAmount}
-                  onChangeText={(t) => setQuickAmount(t.replace(/[^0-9]/g, ''))}
+                  onChangeText={(t) => setQuickAmount(formatAmountInput(t))}
                 />
                 {quickAmount ? (
                   <Text style={[styles.amountPreview, { color: fixedType === 'income' ? Colors.income : Colors.primary }]}>
-                    매월 {parseInt(quickAmount).toLocaleString()}원
+                    매월 {parseAmount(quickAmount).toLocaleString()}원
                   </Text>
                 ) : null}
 
@@ -1062,10 +1069,10 @@ export default function HomeScreen() {
                   placeholderTextColor={Colors.textLight}
                   keyboardType="number-pad"
                   value={quickAmount}
-                  onChangeText={(t) => setQuickAmount(t.replace(/[^0-9]/g, ''))}
+                  onChangeText={(t) => setQuickAmount(formatAmountInput(t))}
                 />
                 {quickAmount ? (
-                  <Text style={styles.amountPreview}>{parseInt(quickAmount).toLocaleString()}원</Text>
+                  <Text style={styles.amountPreview}>{parseAmount(quickAmount).toLocaleString()}원</Text>
                 ) : null}
 
                 {/* 카테고리 */}
@@ -1208,7 +1215,7 @@ export default function HomeScreen() {
             )}
             
             <Text style={styles.inputLabel}>금액</Text>
-            <TextInput style={styles.amountInput} keyboardType="numeric" value={editAmount} onChangeText={(t) => setEditAmount(t.replace(/[^0-9]/g, ''))} />
+            <TextInput style={styles.amountInput} keyboardType="numeric" value={editAmount} onChangeText={(t) => setEditAmount(formatAmountInput(t))} />
             
             <Text style={styles.inputLabel}>카테고리</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryScroll}>
