@@ -462,12 +462,13 @@ export default function HomeScreen() {
       </ScrollView>
 
       {/* ===== FAB (빠른 등록) ===== */}
-      <TouchableOpacity 
-        style={[styles.fab, { backgroundColor: Colors.primary }]} 
+      <TouchableOpacity
+        style={[styles.fab, { backgroundColor: Colors.primary }]}
         onPress={() => setShowQuickAdd(true)}
         activeOpacity={0.8}
       >
-        <Ionicons name="add" size={28} color="#fff" />
+        <Ionicons name="add" size={22} color="#fff" />
+        <Text style={styles.fabLabel}>추가</Text>
       </TouchableOpacity>
 
       {/* ===== 빠른 등록 모달 ===== */}
@@ -766,7 +767,8 @@ const getStyles = (Colors) => StyleSheet.create({
   txAmount: { fontSize: 15, fontWeight: '700' },
 
   // FAB
-  fab: { position: 'absolute', right: 20, bottom: 90, width: 56, height: 56, borderRadius: 16, justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8, elevation: 6 },
+  fab: { position: 'absolute', right: 20, bottom: 90, flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 18, paddingVertical: 14, borderRadius: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8, elevation: 6 },
+  fabLabel: { fontSize: 15, fontWeight: '700', color: '#fff' },
 
   // 모달 공통
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },

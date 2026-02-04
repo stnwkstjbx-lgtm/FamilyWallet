@@ -20,7 +20,7 @@ const lightColors = {
   textDark: '#333D4B',
   textGray: '#6B7684',
   textLight: '#A0A8B4',
-  income: '#059669',
+  income: '#2563EB',
   expense: '#DC2626',
   warning: '#D97706',
   tabBar: '#FFFFFF',
@@ -30,7 +30,7 @@ const lightColors = {
   category: {
     food: '#DC2626', transport: '#0D9488', shopping: '#CA8A04', health: '#059669',
     education: '#4F46E5', entertainment: '#EA580C', housing: '#2563EB', etc: '#6B7280',
-    salary: '#059669', bonus: '#0D9488', sebaetdon: '#CA8A04',
+    salary: '#2563EB', bonus: '#0D9488', sebaetdon: '#CA8A04',
     pocketmoney: '#EA580C', interest: '#4F46E5', sidejob: '#7C3AED', incomeEtc: '#6B7280',
   },
 };
