@@ -41,11 +41,15 @@ export default function HomeScreen() {
   
   // ★ 빠른 등록 모달
   const [showQuickAdd, setShowQuickAdd] = useState(false);
-  const [quickType, setQuickType] = useState('expense');
+  const [quickType, setQuickType] = useState('expense'); // 'expense', 'income', 'fixed'
   const [quickAmount, setQuickAmount] = useState('');
   const [quickCategory, setQuickCategory] = useState(null);
   const [quickMemo, setQuickMemo] = useState('');
   const [quickFundType, setQuickFundType] = useState('shared');
+
+  // ★ 고정지출 등록용
+  const [fixedName, setFixedName] = useState('');
+  const [fixedDay, setFixedDay] = useState('');
   
   // ★ 검색/필터
   const [showFilter, setShowFilter] = useState(false);
@@ -160,6 +164,27 @@ export default function HomeScreen() {
       setQuickMemo('');
       setQuickFundType('shared');
       showAlert('등록 완료! ✅', `${quickType === 'income' ? '수입' : '지출'}이 기록되었습니다.`);
+    } catch (error) {
+      showAlert('오류', '등록에 실패했습니다.');
+    }
+  };
+
+  // ★ 고정지출 빠른 등록
+  const handleQuickAddFixed = async () => {
+    if (!fixedName.trim()) { showAlert('알림', '항목명을 입력해 주세요!'); return; }
+    if (!quickAmount || quickAmount === '0') { showAlert('알림', '금액을 입력해 주세요!'); return; }
+    if (!fixedDay) { showAlert('알림', '날짜를 입력해 주세요!'); return; }
+    const day = parseInt(fixedDay);
+    if (day < 1 || day > 31) { showAlert('알림', '1~31 사이 날짜를 입력해 주세요!'); return; }
+    try {
+      await addDoc(collection(db, 'wallets', currentWalletId, 'fixedExpenses'), {
+        name: fixedName.trim(), amount: parseInt(quickAmount), day, lastRecordedMonth: '', createdAt: new Date().toISOString(),
+      });
+      setShowQuickAdd(false);
+      setQuickAmount('');
+      setFixedName('');
+      setFixedDay('');
+      showAlert('등록 완료! ✅', `고정 지출 "${fixedName.trim()}"이 등록되었습니다.\n매월 ${day}일에 자동 기록됩니다.`);
     } catch (error) {
       showAlert('오류', '등록에 실패했습니다.');
     }
@@ -525,93 +550,156 @@ export default function HomeScreen() {
             <View style={styles.modalHandle} />
             <Text style={styles.modalTitle}>빠른 등록</Text>
 
-            {/* 수입/지출 선택 */}
+            {/* 수입/지출/고정지출 선택 */}
             <View style={styles.typeSelector}>
-              <TouchableOpacity 
-                style={[styles.typeBtn, quickType === 'expense' && { backgroundColor: Colors.expense }]} 
+              <TouchableOpacity
+                style={[styles.typeBtn, quickType === 'expense' && { backgroundColor: Colors.expense }]}
                 onPress={() => { setQuickType('expense'); setQuickCategory(null); }}
               >
                 <Text style={[styles.typeBtnText, quickType === 'expense' && { color: '#fff' }]}>지출</Text>
               </TouchableOpacity>
-              <TouchableOpacity 
-                style={[styles.typeBtn, quickType === 'income' && { backgroundColor: Colors.income }]} 
+              <TouchableOpacity
+                style={[styles.typeBtn, quickType === 'income' && { backgroundColor: Colors.income }]}
                 onPress={() => { setQuickType('income'); setQuickCategory(null); }}
               >
                 <Text style={[styles.typeBtnText, quickType === 'income' && { color: '#fff' }]}>수입</Text>
               </TouchableOpacity>
+              {isAdmin && (
+                <TouchableOpacity
+                  style={[styles.typeBtn, quickType === 'fixed' && { backgroundColor: Colors.primary }]}
+                  onPress={() => setQuickType('fixed')}
+                >
+                  <Text style={[styles.typeBtnText, quickType === 'fixed' && { color: '#fff' }]}>고정지출</Text>
+                </TouchableOpacity>
+              )}
             </View>
 
-            {/* 공금/용돈 선택 (지출일 때만) */}
-            {quickType === 'expense' && (
-              <View style={styles.fundSelector}>
-                <TouchableOpacity 
-                  style={[styles.fundBtn, quickFundType === 'shared' && { backgroundColor: Colors.primary + '20', borderColor: Colors.primary }]} 
-                  onPress={() => setQuickFundType('shared')}
-                >
-                  <Ionicons name="people" size={16} color={Colors.primary} />
-                  <Text style={[styles.fundBtnText, { color: Colors.primary }]}>공금</Text>
-                </TouchableOpacity>
-                <TouchableOpacity 
-                  style={[styles.fundBtn, quickFundType === 'personal' && { backgroundColor: Colors.personal + '20', borderColor: Colors.personal }]}
-                  onPress={() => setQuickFundType('personal')}
-                >
-                  <Ionicons name="person" size={16} color={Colors.personal} />
-                  <Text style={[styles.fundBtnText, { color: Colors.personal }]}>용돈</Text>
-                </TouchableOpacity>
-              </View>
+            {quickType === 'fixed' ? (
+              /* ===== 고정지출 등록 폼 ===== */
+              <>
+                <Text style={styles.inputLabel}>항목명</Text>
+                <TextInput
+                  style={styles.memoInput}
+                  placeholder="예: 월세, 통신비, 보험료"
+                  placeholderTextColor={Colors.textLight}
+                  value={fixedName}
+                  onChangeText={setFixedName}
+                />
+
+                <Text style={styles.inputLabel}>금액</Text>
+                <TextInput
+                  style={styles.amountInput}
+                  placeholder="0"
+                  placeholderTextColor={Colors.textLight}
+                  keyboardType="number-pad"
+                  value={quickAmount}
+                  onChangeText={(t) => setQuickAmount(t.replace(/[^0-9]/g, ''))}
+                />
+                {quickAmount ? (
+                  <Text style={styles.amountPreview}>{parseInt(quickAmount).toLocaleString()}원</Text>
+                ) : null}
+
+                <Text style={styles.inputLabel}>자동 기록일</Text>
+                <View style={styles.fixedDayRow}>
+                  <Text style={styles.fixedDayLabel}>매월</Text>
+                  <TextInput
+                    style={styles.fixedDayInput}
+                    placeholder="1"
+                    placeholderTextColor={Colors.textLight}
+                    keyboardType="number-pad"
+                    maxLength={2}
+                    value={fixedDay}
+                    onChangeText={(t) => setFixedDay(t.replace(/[^0-9]/g, ''))}
+                  />
+                  <Text style={styles.fixedDayLabel}>일</Text>
+                </View>
+                <Text style={styles.fixedDayHint}>해당 날짜에 공금 지출로 자동 기록됩니다</Text>
+
+                <View style={styles.modalBtns}>
+                  <TouchableOpacity style={styles.cancelBtn} onPress={() => setShowQuickAdd(false)}>
+                    <Text style={styles.cancelBtnText}>취소</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={[styles.saveBtn, { backgroundColor: Colors.primary }]} onPress={handleQuickAddFixed}>
+                    <Text style={styles.saveBtnText}>등록</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            ) : (
+              /* ===== 일반 지출/수입 등록 폼 ===== */
+              <>
+                {/* 공금/용돈 선택 (지출일 때만) */}
+                {quickType === 'expense' && (
+                  <View style={styles.fundSelector}>
+                    <TouchableOpacity
+                      style={[styles.fundBtn, quickFundType === 'shared' && { backgroundColor: Colors.primary + '20', borderColor: Colors.primary }]}
+                      onPress={() => setQuickFundType('shared')}
+                    >
+                      <Ionicons name="people" size={16} color={Colors.primary} />
+                      <Text style={[styles.fundBtnText, { color: Colors.primary }]}>공금</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.fundBtn, quickFundType === 'personal' && { backgroundColor: Colors.personal + '20', borderColor: Colors.personal }]}
+                      onPress={() => setQuickFundType('personal')}
+                    >
+                      <Ionicons name="person" size={16} color={Colors.personal} />
+                      <Text style={[styles.fundBtnText, { color: Colors.personal }]}>용돈</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+
+                {/* 금액 */}
+                <Text style={styles.inputLabel}>금액</Text>
+                <TextInput
+                  style={styles.amountInput}
+                  placeholder="0"
+                  placeholderTextColor={Colors.textLight}
+                  keyboardType="number-pad"
+                  value={quickAmount}
+                  onChangeText={(t) => setQuickAmount(t.replace(/[^0-9]/g, ''))}
+                />
+                {quickAmount ? (
+                  <Text style={styles.amountPreview}>{parseInt(quickAmount).toLocaleString()}원</Text>
+                ) : null}
+
+                {/* 카테고리 */}
+                <Text style={styles.inputLabel}>카테고리</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryScroll}>
+                  {quickCategories.map((cat) => (
+                    <TouchableOpacity
+                      key={cat.id}
+                      style={[
+                        styles.categoryChip,
+                        quickCategory === cat.id && { backgroundColor: Colors.category[cat.id], borderColor: Colors.category[cat.id] }
+                      ]}
+                      onPress={() => setQuickCategory(cat.id)}
+                    >
+                      <Ionicons name={cat.icon} size={16} color={quickCategory === cat.id ? '#fff' : Colors.category[cat.id]} />
+                      <Text style={[styles.categoryChipText, quickCategory === cat.id && { color: '#fff' }]}>{cat.name}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+
+                {/* 메모 */}
+                <Text style={styles.inputLabel}>메모 (선택)</Text>
+                <TextInput
+                  style={styles.memoInput}
+                  placeholder="메모를 입력하세요"
+                  placeholderTextColor={Colors.textLight}
+                  value={quickMemo}
+                  onChangeText={setQuickMemo}
+                />
+
+                {/* 버튼 */}
+                <View style={styles.modalBtns}>
+                  <TouchableOpacity style={styles.cancelBtn} onPress={() => setShowQuickAdd(false)}>
+                    <Text style={styles.cancelBtnText}>취소</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={[styles.saveBtn, { backgroundColor: quickType === 'income' ? Colors.income : Colors.expense }]} onPress={handleQuickAdd}>
+                    <Text style={styles.saveBtnText}>등록</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
             )}
-
-            {/* 금액 */}
-            <Text style={styles.inputLabel}>금액</Text>
-            <TextInput
-              style={styles.amountInput}
-              placeholder="0"
-              placeholderTextColor={Colors.textLight}
-              keyboardType="number-pad"
-              value={quickAmount}
-              onChangeText={(t) => setQuickAmount(t.replace(/[^0-9]/g, ''))}
-            />
-            {quickAmount ? (
-              <Text style={styles.amountPreview}>{parseInt(quickAmount).toLocaleString()}원</Text>
-            ) : null}
-
-            {/* 카테고리 */}
-            <Text style={styles.inputLabel}>카테고리</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryScroll}>
-              {quickCategories.map((cat) => (
-                <TouchableOpacity 
-                  key={cat.id} 
-                  style={[
-                    styles.categoryChip, 
-                    quickCategory === cat.id && { backgroundColor: Colors.category[cat.id], borderColor: Colors.category[cat.id] }
-                  ]} 
-                  onPress={() => setQuickCategory(cat.id)}
-                >
-                  <Ionicons name={cat.icon} size={16} color={quickCategory === cat.id ? '#fff' : Colors.category[cat.id]} />
-                  <Text style={[styles.categoryChipText, quickCategory === cat.id && { color: '#fff' }]}>{cat.name}</Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-
-            {/* 메모 */}
-            <Text style={styles.inputLabel}>메모 (선택)</Text>
-            <TextInput
-              style={styles.memoInput}
-              placeholder="메모를 입력하세요"
-              placeholderTextColor={Colors.textLight}
-              value={quickMemo}
-              onChangeText={setQuickMemo}
-            />
-
-            {/* 버튼 */}
-            <View style={styles.modalBtns}>
-              <TouchableOpacity style={styles.cancelBtn} onPress={() => setShowQuickAdd(false)}>
-                <Text style={styles.cancelBtnText}>취소</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.saveBtn, { backgroundColor: quickType === 'income' ? Colors.income : Colors.expense }]} onPress={handleQuickAdd}>
-                <Text style={styles.saveBtnText}>등록</Text>
-              </TouchableOpacity>
-            </View>
           </View>
         </View>
       </Modal>
@@ -878,4 +966,10 @@ const getStyles = (Colors) => StyleSheet.create({
   categoryFilterTextActive: { color: '#fff' },
   applyBtn: { marginTop: 24, paddingVertical: 14, borderRadius: 12, alignItems: 'center' },
   applyBtnText: { fontSize: 16, fontWeight: '700', color: '#fff' },
+
+  // 고정지출 폼
+  fixedDayRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, marginTop: 4 },
+  fixedDayLabel: { fontSize: 16, fontWeight: '600', color: Colors.textBlack },
+  fixedDayInput: { width: 60, backgroundColor: Colors.background, borderRadius: 12, padding: 12, fontSize: 20, fontWeight: '700', color: Colors.textBlack, textAlign: 'center' },
+  fixedDayHint: { fontSize: 12, color: Colors.textGray, textAlign: 'center', marginTop: 8 },
 });
