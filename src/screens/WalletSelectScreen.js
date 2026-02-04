@@ -30,9 +30,10 @@ export default function WalletSelectScreen() {
 
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showJoinModal, setShowJoinModal] = useState(false);
+  const [showNicknameModal, setShowNicknameModal] = useState(false);
+  const [flowType, setFlowType] = useState(null); // 'create' or 'join'
   const [walletName, setWalletName] = useState('');
   const [nickname, setNickname] = useState('');
-  const [joinNickname, setJoinNickname] = useState('');
   const [inviteCode, setInviteCode] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -42,35 +43,60 @@ export default function WalletSelectScreen() {
     switchWallet(walletId);
   };
 
-  const handleCreate = async () => {
+  // Step 1 → Step 2: 가계부 이름 입력 후 닉네임 모달로 이동
+  const handleCreateNext = () => {
     if (!walletName.trim()) { showAlert('알림', '가계부 이름을 입력해 주세요!'); return; }
+    setShowCreateModal(false);
+    setFlowType('create');
+    setTimeout(() => setShowNicknameModal(true), 300);
+  };
+
+  // Step 1 → Step 2: 초대코드 입력 후 닉네임 모달로 이동
+  const handleJoinNext = () => {
+    if (!inviteCode.trim() || inviteCode.trim().length < 6) { showAlert('알림', '초대코드 6자리를 입력해 주세요!'); return; }
+    setShowJoinModal(false);
+    setFlowType('join');
+    setTimeout(() => setShowNicknameModal(true), 300);
+  };
+
+  // Step 2: 닉네임 입력 후 최종 생성/합류
+  const handleNicknameConfirm = async () => {
     if (!nickname.trim()) { showAlert('알림', '닉네임을 입력해 주세요!'); return; }
     setLoading(true);
-    const result = await createWallet(walletName.trim(), nickname.trim());
-    setLoading(false);
-    if (result.success) {
-      setShowCreateModal(false);
-      setWalletName('');
-      setNickname('');
-      showAlert('🎉 생성 완료!', `초대 코드: ${result.inviteCode}`);
+    if (flowType === 'create') {
+      const result = await createWallet(walletName.trim(), nickname.trim());
+      setLoading(false);
+      if (result.success) {
+        setShowNicknameModal(false);
+        setWalletName('');
+        setNickname('');
+        setFlowType(null);
+        showAlert('🎉 생성 완료!', `초대 코드: ${result.inviteCode}`);
+      } else {
+        showAlert('오류', result.message);
+      }
     } else {
-      showAlert('오류', result.message);
+      const result = await joinWallet(inviteCode.trim(), nickname.trim());
+      setLoading(false);
+      if (result.success) {
+        setShowNicknameModal(false);
+        setInviteCode('');
+        setNickname('');
+        setFlowType(null);
+        showAlert('🎉 합류 완료!', `"${result.walletName}" 가계부에 합류했습니다!`);
+      } else {
+        showAlert('오류', result.message);
+      }
     }
   };
 
-  const handleJoin = async () => {
-    if (!inviteCode.trim() || inviteCode.trim().length < 6) { showAlert('알림', '초대코드 6자리를 입력해 주세요!'); return; }
-    if (!joinNickname.trim()) { showAlert('알림', '닉네임을 입력해 주세요!'); return; }
-    setLoading(true);
-    const result = await joinWallet(inviteCode.trim(), joinNickname.trim());
-    setLoading(false);
-    if (result.success) {
-      setShowJoinModal(false);
-      setInviteCode('');
-      setJoinNickname('');
-      showAlert('🎉 합류 완료!', `"${result.walletName}" 가계부에 합류했습니다!`);
+  const handleNicknameBack = () => {
+    setShowNicknameModal(false);
+    setNickname('');
+    if (flowType === 'create') {
+      setTimeout(() => setShowCreateModal(true), 300);
     } else {
-      showAlert('오류', result.message);
+      setTimeout(() => setShowJoinModal(true), 300);
     }
   };
 
@@ -200,11 +226,12 @@ export default function WalletSelectScreen() {
         </View>
       </ScrollView>
 
-      {/* 만들기 모달 */}
+      {/* Step 1: 만들기 모달 - 가계부 이름만 */}
       <Modal visible={showCreateModal} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>새 가계부 만들기</Text>
+            <Text style={styles.stepIndicator}>1 / 2 단계</Text>
             <TextInput
               style={styles.modalInput}
               placeholder="가계부 이름 (예: 김씨네 가계부)"
@@ -213,32 +240,24 @@ export default function WalletSelectScreen() {
               onChangeText={setWalletName}
               maxLength={20}
             />
-            <Text style={styles.nicknameLabel}>이 가계부에서 사용할 닉네임</Text>
-            <TextInput
-              style={styles.modalInput}
-              placeholder="닉네임 (예: 엄마, 아빠, 첫째)"
-              placeholderTextColor={Colors.textLight}
-              value={nickname}
-              onChangeText={setNickname}
-              maxLength={10}
-            />
             <View style={styles.modalButtons}>
-              <TouchableOpacity style={styles.modalCancelBtn} onPress={() => { setShowCreateModal(false); setNickname(''); }}>
+              <TouchableOpacity style={styles.modalCancelBtn} onPress={() => { setShowCreateModal(false); setWalletName(''); }}>
                 <Text style={styles.modalCancelText}>취소</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.modalSaveBtn, loading && { opacity: 0.6 }]} onPress={handleCreate} disabled={loading}>
-                <Text style={styles.modalSaveText}>{loading ? '생성 중...' : '만들기'}</Text>
+              <TouchableOpacity style={styles.modalSaveBtn} onPress={handleCreateNext}>
+                <Text style={styles.modalSaveText}>다음</Text>
               </TouchableOpacity>
             </View>
           </View>
         </View>
       </Modal>
 
-      {/* 합류 모달 */}
+      {/* Step 1: 합류 모달 - 초대코드만 */}
       <Modal visible={showJoinModal} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>가계부 합류</Text>
+            <Text style={styles.stepIndicator}>1 / 2 단계</Text>
             <TextInput
               style={[styles.modalInput, { textAlign: 'center', fontSize: 22, fontWeight: 'bold', letterSpacing: 4 }]}
               placeholder="ABC123"
@@ -248,21 +267,42 @@ export default function WalletSelectScreen() {
               maxLength={6}
               autoCapitalize="characters"
             />
-            <Text style={styles.nicknameLabel}>이 가계부에서 사용할 닉네임</Text>
+            <View style={styles.modalButtons}>
+              <TouchableOpacity style={styles.modalCancelBtn} onPress={() => { setShowJoinModal(false); setInviteCode(''); }}>
+                <Text style={styles.modalCancelText}>취소</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.modalSaveBtn} onPress={handleJoinNext}>
+                <Text style={styles.modalSaveText}>다음</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Step 2: 닉네임 모달 (생성/합류 공통) */}
+      <Modal visible={showNicknameModal} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>닉네임 설정</Text>
+            <Text style={styles.stepIndicator}>2 / 2 단계</Text>
+            <Text style={styles.nicknameLabel}>이 가계부에서 사용할 닉네임을 입력해 주세요</Text>
             <TextInput
               style={styles.modalInput}
               placeholder="닉네임 (예: 엄마, 아빠, 첫째)"
               placeholderTextColor={Colors.textLight}
-              value={joinNickname}
-              onChangeText={setJoinNickname}
+              value={nickname}
+              onChangeText={setNickname}
               maxLength={10}
+              autoFocus
             />
             <View style={styles.modalButtons}>
-              <TouchableOpacity style={styles.modalCancelBtn} onPress={() => { setShowJoinModal(false); setJoinNickname(''); }}>
-                <Text style={styles.modalCancelText}>취소</Text>
+              <TouchableOpacity style={styles.modalCancelBtn} onPress={handleNicknameBack}>
+                <Text style={styles.modalCancelText}>이전</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.modalSaveBtn, loading && { opacity: 0.6 }]} onPress={handleJoin} disabled={loading}>
-                <Text style={styles.modalSaveText}>{loading ? '합류 중...' : '합류하기'}</Text>
+              <TouchableOpacity style={[styles.modalSaveBtn, loading && { opacity: 0.6 }]} onPress={handleNicknameConfirm} disabled={loading}>
+                <Text style={styles.modalSaveText}>
+                  {loading ? (flowType === 'create' ? '생성 중...' : '합류 중...') : (flowType === 'create' ? '만들기' : '합류하기')}
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -302,7 +342,8 @@ const getStyles = (Colors) => StyleSheet.create({
   limitNoticeText: { fontSize: 13, color: Colors.textGray, flex: 1, lineHeight: 20 },
   modalOverlay: { flex: 1, backgroundColor: Colors.modalOverlay, justifyContent: 'flex-end' },
   modalContent: { backgroundColor: Colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 40 },
-  modalTitle: { fontSize: 20, fontWeight: 'bold', color: Colors.textBlack, marginBottom: 16 },
+  modalTitle: { fontSize: 20, fontWeight: 'bold', color: Colors.textBlack, marginBottom: 4 },
+  stepIndicator: { fontSize: 13, fontWeight: '600', color: Colors.primary, marginBottom: 16 },
   modalInput: { backgroundColor: Colors.background, borderRadius: 12, padding: 14, fontSize: 16, color: Colors.textBlack, marginBottom: 16 },
   nicknameLabel: { fontSize: 13, fontWeight: '600', color: Colors.textGray, marginBottom: 8 },
   modalButtons: { flexDirection: 'row', gap: 12 },
