@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View, Text, StyleSheet, TextInput, TouchableOpacity,
-  ScrollView, StatusBar, Alert, KeyboardAvoidingView, Platform,
+  ScrollView, StatusBar, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -9,19 +9,15 @@ import { useTheme } from '../constants/ThemeContext';
 import { useAuth } from '../constants/AuthContext';
 import { useWallet } from '../constants/WalletContext';
 import { EXPENSE_CATEGORIES, INCOME_CATEGORIES } from '../constants/categories';
+import { showAlert } from '../hooks/useAlert';
 import { db } from '../firebase/firebaseConfig';
 import { collection, addDoc } from 'firebase/firestore';
-
-const showAlert = (title, message) => {
-  if (Platform.OS === 'web') { window.alert(`${title}\n\n${message}`); }
-  else { Alert.alert(title, message); }
-};
 
 export default function AddScreen() {
   const { colors: Colors } = useTheme();
   const { user, userProfile } = useAuth();
   const { currentWalletId, currentWallet } = useWallet();
-  const styles = getStyles(Colors);
+  const styles = useMemo(() => getStyles(Colors), [Colors]);
 
   const [type, setType] = useState('expense');
   const [amount, setAmount] = useState('');
@@ -36,24 +32,30 @@ export default function AddScreen() {
   const myRole = currentWallet?.members?.[user?.uid]?.role || 'member';
   const myAllowance = currentWallet?.members?.[user?.uid]?.allowance || 0;
 
-  const handleSave = async () => {
-    if (!amount || amount === '0') { showAlert('알림', '금액을 입력해 주세요!'); return; }
+  const handleSave = useCallback(async () => {
+    const trimmedAmount = amount.trim();
+    if (!trimmedAmount || trimmedAmount === '0') { showAlert('알림', '금액을 입력해 주세요!'); return; }
+    const parsedAmount = parseInt(trimmedAmount, 10);
+    if (isNaN(parsedAmount) || parsedAmount <= 0 || parsedAmount > 999999999) {
+      showAlert('알림', '올바른 금액을 입력해 주세요! (1 ~ 999,999,999)');
+      return;
+    }
     if (!selectedCategory) { showAlert('알림', '카테고리를 선택해 주세요!'); return; }
     if (!currentWalletId) { showAlert('알림', '가계부가 선택되지 않았습니다.'); return; }
 
     try {
+      const sanitizedMemo = memo.trim().slice(0, 200);
       const txData = {
         type,
-        amount: parseInt(amount),
+        amount: parsedAmount,
         category: selectedCategory,
-        memo,
+        memo: sanitizedMemo,
         member: myWalletName,
         userId: user?.uid || '',
         date: new Date().toISOString(),
         createdAt: new Date().toISOString(),
       };
 
-      // 지출일 때만 fundType 추가
       if (type === 'expense') {
         txData.fundType = fundType;
       }
@@ -61,8 +63,8 @@ export default function AddScreen() {
       await addDoc(collection(db, 'wallets', currentWalletId, 'transactions'), txData);
 
       const fundLabel = type === 'expense' ? (fundType === 'personal' ? ' (용돈)' : ' (공금)') : '';
-      showAlert('저장 완료! ✅',
-        `${myWalletName}님의 ${type === 'expense' ? '지출' : '수입'}${fundLabel}\n${parseInt(amount).toLocaleString('ko-KR')}원이 기록되었습니다.`
+      showAlert('저장 완료!',
+        `${myWalletName}님의 ${type === 'expense' ? '지출' : '수입'}${fundLabel}\n${parsedAmount.toLocaleString('ko-KR')}원이 기록되었습니다.`
       );
 
       setAmount(''); setSelectedCategory(null); setMemo('');
@@ -70,7 +72,7 @@ export default function AddScreen() {
       console.error('저장 실패:', error);
       showAlert('오류', '저장에 실패했습니다.');
     }
-  };
+  }, [amount, selectedCategory, currentWalletId, type, fundType, memo, myWalletName, user]);
 
   return (
     <View style={styles.container}>

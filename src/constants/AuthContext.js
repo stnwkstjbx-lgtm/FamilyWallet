@@ -1,4 +1,4 @@
-import React, { createContext, useState, useContext, useEffect } from 'react';
+import React, { createContext, useState, useContext, useEffect, useCallback, useMemo } from 'react';
 import { Platform } from 'react-native';
 import { auth, db } from '../firebase/firebaseConfig';
 import {
@@ -13,12 +13,23 @@ import {
 } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 
-const AuthContext = createContext();
+const AuthContext = createContext(undefined);
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [userProfile, setUserProfile] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  const loadUserProfile = useCallback(async (firebaseUser) => {
+    try {
+      const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
+      if (userDoc.exists()) {
+        setUserProfile(userDoc.data());
+      }
+    } catch (error) {
+      console.error('프로필 로드 실패:', error);
+    }
+  }, []);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
@@ -32,21 +43,10 @@ export function AuthProvider({ children }) {
       setLoading(false);
     });
     return () => unsubscribe();
-  }, []);
-
-  const loadUserProfile = async (firebaseUser) => {
-    try {
-      const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
-      if (userDoc.exists()) {
-        setUserProfile(userDoc.data());
-      }
-    } catch (error) {
-      console.log('프로필 로드 실패:', error);
-    }
-  };
+  }, [loadUserProfile]);
 
   // Firestore에 사용자 문서 생성 (없을 때만)
-  const ensureUserDoc = async (firebaseUser, displayName) => {
+  const ensureUserDoc = useCallback(async (firebaseUser, displayName) => {
     try {
       const userRef = doc(db, 'users', firebaseUser.uid);
       const userDoc = await getDoc(userRef);
@@ -66,10 +66,10 @@ export function AuthProvider({ children }) {
     } catch (error) {
       console.error('사용자 문서 생성 실패:', error);
     }
-  };
+  }, []);
 
   // 이메일 회원가입
-  const register = async (email, password, name) => {
+  const register = useCallback(async (email, password, name) => {
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       await ensureUserDoc(userCredential.user, name);
@@ -81,10 +81,10 @@ export function AuthProvider({ children }) {
       else if (error.code === 'auth/invalid-email') message = '유효하지 않은 이메일입니다.';
       return { success: false, message };
     }
-  };
+  }, [ensureUserDoc]);
 
   // 이메일 로그인
-  const login = async (email, password) => {
+  const login = useCallback(async (email, password) => {
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       await ensureUserDoc(userCredential.user);
@@ -95,10 +95,10 @@ export function AuthProvider({ children }) {
       else if (error.code === 'auth/wrong-password') message = '비밀번호가 올바르지 않습니다.';
       return { success: false, message };
     }
-  };
+  }, [ensureUserDoc]);
 
   // Google 로그인
-  const loginWithGoogle = async () => {
+  const loginWithGoogle = useCallback(async () => {
     try {
       const provider = new GoogleAuthProvider();
       const result = await signInWithPopup(auth, provider);
@@ -111,10 +111,10 @@ export function AuthProvider({ children }) {
       }
       return { success: false, message: 'Google 로그인에 실패했습니다.' };
     }
-  };
+  }, [ensureUserDoc]);
 
   // Apple 로그인
-  const loginWithApple = async () => {
+  const loginWithApple = useCallback(async () => {
     try {
       const provider = new OAuthProvider('apple.com');
       provider.addScope('email');
@@ -129,10 +129,10 @@ export function AuthProvider({ children }) {
       }
       return { success: false, message: 'Apple 로그인에 실패했습니다.' };
     }
-  };
+  }, [ensureUserDoc]);
 
   // 로그아웃
-  const logout = async () => {
+  const logout = useCallback(async () => {
     try {
       await signOut(auth);
       setUser(null);
@@ -140,10 +140,10 @@ export function AuthProvider({ children }) {
     } catch (error) {
       console.error('로그아웃 실패:', error);
     }
-  };
+  }, []);
 
   // 프로필 업데이트
-  const updateUserProfile = async (updates) => {
+  const updateUserProfile = useCallback(async (updates) => {
     if (!user) return;
     try {
       await setDoc(doc(db, 'users', user.uid), updates, { merge: true });
@@ -151,19 +151,25 @@ export function AuthProvider({ children }) {
     } catch (error) {
       console.error('프로필 업데이트 실패:', error);
     }
-  };
+  }, [user]);
+
+  const value = useMemo(() => ({
+    user, userProfile, loading,
+    register, login, loginWithGoogle, loginWithApple,
+    logout, updateUserProfile, loadUserProfile,
+  }), [user, userProfile, loading, register, login, loginWithGoogle, loginWithApple, logout, updateUserProfile, loadUserProfile]);
 
   return (
-    <AuthContext.Provider value={{
-      user, userProfile, loading,
-      register, login, loginWithGoogle, loginWithApple,
-      logout, updateUserProfile, loadUserProfile,
-    }}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );
 }
 
 export function useAuth() {
-  return useContext(AuthContext);
+  const context = useContext(AuthContext);
+  if (context === undefined) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
 }

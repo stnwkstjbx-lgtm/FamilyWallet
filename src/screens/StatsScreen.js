@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, StatusBar } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -12,7 +12,7 @@ import { collection, onSnapshot, query } from 'firebase/firestore';
 export default function StatsScreen() {
   const { colors: Colors } = useTheme();
   const { currentWalletId, currentWallet } = useWallet();
-  const styles = getStyles(Colors);
+  const styles = useMemo(() => getStyles(Colors), [Colors]);
   const [transactions, setTransactions] = useState([]);
 
   useEffect(() => {

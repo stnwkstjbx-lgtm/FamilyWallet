@@ -24,8 +24,14 @@ import {
 import { db } from '../firebase/firebaseConfig';
 import { useAuth } from './AuthContext';
 
-const WalletContext = createContext();
-export const useWallet = () => useContext(WalletContext);
+const WalletContext = createContext(undefined);
+export const useWallet = () => {
+  const context = useContext(WalletContext);
+  if (context === undefined) {
+    throw new Error('useWallet must be used within a WalletProvider');
+  }
+  return context;
+};
 
 const MAX_WALLETS = 3;
 export const maxWallets = MAX_WALLETS;
@@ -68,7 +74,7 @@ export function WalletProvider({ children }) {
   // ══════════════════════════════════════════
 
   // 가계부 생성
-  const createWallet = async (name) => {
+  const createWallet = useCallback(async (name) => {
     if (!user) throw new Error('로그인이 필요합니다');
     if (wallets.length >= MAX_WALLETS) throw new Error(`최대 ${MAX_WALLETS}개의 가계부만 만들 수 있어요`);
 
@@ -97,10 +103,10 @@ export function WalletProvider({ children }) {
     await updateDoc(userRef, { wallets: [...currentWallets, walletRef.id] });
 
     return walletRef.id;
-  };
+  }, [user, wallets]);
 
   // 초대코드로 합류
-  const joinWallet = async (inviteCode) => {
+  const joinWallet = useCallback(async (inviteCode) => {
     if (!user) throw new Error('로그인이 필요합니다');
     if (wallets.length >= MAX_WALLETS) throw new Error(`최대 ${MAX_WALLETS}개의 가계부만 참여할 수 있어요`);
 
@@ -129,15 +135,15 @@ export function WalletProvider({ children }) {
     await updateDoc(userRef, { wallets: [...currentWallets, walletDoc.id] });
 
     return walletDoc.id;
-  };
+  }, [user, wallets]);
 
   // 가계부 전환
-  const switchWallet = (walletId) => {
+  const switchWallet = useCallback((walletId) => {
     setCurrentWalletId(walletId);
-  };
+  }, []);
 
   // 가계부 나가기
-  const leaveWallet = async (walletId) => {
+  const leaveWallet = useCallback(async (walletId) => {
     if (!user) return;
     const walletRef = doc(db, 'wallets', walletId);
     const walletSnap = await getDoc(walletRef);
@@ -166,34 +172,34 @@ export function WalletProvider({ children }) {
     await updateDoc(userRef, { wallets: currentWallets });
 
     if (currentWalletId === walletId) setCurrentWalletId(null);
-  };
+  }, [user, currentWalletId]);
 
   // 가계부 목록으로 이동
-  const goToWalletList = () => setCurrentWalletId(null);
+  const goToWalletList = useCallback(() => setCurrentWalletId(null), []);
 
   // ══════════════════════════════════════════
   // ★ 초대코드 관련 (SettingsScreen에서 사용)
   // ══════════════════════════════════════════
 
   // 초대코드 재생성
-  const regenerateInviteCode = async () => {
+  const regenerateInviteCode = useCallback(async () => {
     if (!currentWalletId || !isAdmin) return null;
     const newCode = generateInviteCode();
     await updateDoc(doc(db, 'wallets', currentWalletId), { inviteCode: newCode });
     return newCode;
-  };
+  }, [currentWalletId, isAdmin]);
 
   // 초대 링크 가져오기
-  const getInviteLink = () => {
+  const getInviteLink = useCallback(() => {
     if (!currentWallet?.inviteCode) return '';
     return `패밀리월렛 초대코드: ${currentWallet.inviteCode}`;
-  };
+  }, [currentWallet?.inviteCode]);
 
   // ══════════════════════════════════════════
   // 트랜잭션 추가
   // ══════════════════════════════════════════
 
-  const addTransaction = async (transactionData) => {
+  const addTransaction = useCallback(async (transactionData) => {
     if (!currentWalletId || !user) return;
     const txRef = collection(db, 'wallets', currentWalletId, 'transactions');
     await addDoc(txRef, {
@@ -202,13 +208,13 @@ export function WalletProvider({ children }) {
       memberName: user.displayName || user.email,
       createdAt: new Date().toISOString(),
     });
-  };
+  }, [currentWalletId, user]);
 
   // ══════════════════════════════════════════
   // ★ 용돈 배분 시스템
   // ══════════════════════════════════════════
 
-  const allocateAllowance = async (memberId, amount, yearMonth) => {
+  const allocateAllowance = useCallback(async (memberId, amount, yearMonth) => {
     if (!currentWalletId || !user) return;
     if (!isAdmin) {
       throw new Error('관리자만 용돈을 배분할 수 있어요');
@@ -248,9 +254,9 @@ export function WalletProvider({ children }) {
       memberName: user.displayName || user.email,
       createdAt: new Date().toISOString(),
     });
-  };
+  }, [currentWalletId, user, isAdmin, currentWallet]);
 
-  const addPersonalExpense = async ({ category, amount, description, date }) => {
+  const addPersonalExpense = useCallback(async ({ category, amount, description, date }) => {
     if (!currentWalletId || !user) return;
 
     const txRef = collection(db, 'wallets', currentWalletId, 'transactions');
@@ -265,7 +271,7 @@ export function WalletProvider({ children }) {
       memberName: user.displayName || user.email,
       createdAt: new Date().toISOString(),
     });
-  };
+  }, [currentWalletId, user]);
 
   // ══════════════════════════════════════════
   // ★ 용돈 조회 함수들
@@ -466,7 +472,7 @@ export function WalletProvider({ children }) {
   // Context Value
   // ══════════════════════════════════════════
 
-  const value = {
+  const value = useMemo(() => ({
     // 기존 (다른 화면에서 사용)
     wallets,
     userWallets,  // SettingsScreen 호환
@@ -476,18 +482,18 @@ export function WalletProvider({ children }) {
     loading,
     isAdmin,      // ★ HomeScreen, SettingsScreen에서 사용
     maxWallets,   // SettingsScreen에서 사용
-    
+
     // 가계부 CRUD
     createWallet,
     joinWallet,
     switchWallet,
     leaveWallet,
     goToWalletList,
-    
+
     // 초대코드 관련
     regenerateInviteCode,
     getInviteLink,
-    
+
     // 트랜잭션
     addTransaction,
 
@@ -500,7 +506,14 @@ export function WalletProvider({ children }) {
     getAllowanceReport,
     getFamilyTotalExpense,
     getFamilyTotalIncome,
-  };
+  }), [
+    wallets, currentWalletId, currentWallet, transactions, loading, isAdmin,
+    createWallet, joinWallet, switchWallet, leaveWallet, goToWalletList,
+    regenerateInviteCode, getInviteLink, addTransaction,
+    allocateAllowance, addPersonalExpense,
+    getMyAllowanceForMonth, getMyPersonalSpendingForMonth, getMyAllowanceRemaining,
+    getAllowanceReport, getFamilyTotalExpense, getFamilyTotalIncome,
+  ]);
 
   return <WalletContext.Provider value={value}>{children}</WalletContext.Provider>;
 }

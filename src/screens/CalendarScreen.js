@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, StatusBar } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -20,7 +20,7 @@ LocaleConfig.defaultLocale = 'ko';
 export default function CalendarScreen() {
   const { colors: Colors } = useTheme();
   const { currentWalletId, currentWallet } = useWallet();
-  const styles = getStyles(Colors);
+  const styles = useMemo(() => getStyles(Colors), [Colors]);
   const [transactions, setTransactions] = useState([]);
   const [selectedDate, setSelectedDate] = useState(null);
 
@@ -32,29 +32,35 @@ export default function CalendarScreen() {
     return () => unsub();
   }, [currentWalletId]);
 
-  const markedDates = {};
-  transactions.forEach((t) => {
-    const dateKey = t.date.split('T')[0];
-    if (!markedDates[dateKey]) markedDates[dateKey] = { income: 0, expense: 0 };
-    if (t.type === 'income') markedDates[dateKey].income += t.amount;
-    else markedDates[dateKey].expense += t.amount;
-  });
+  const calendarMarks = useMemo(() => {
+    const markedDates = {};
+    transactions.forEach((t) => {
+      const dateKey = t.date.split('T')[0];
+      if (!markedDates[dateKey]) markedDates[dateKey] = { income: 0, expense: 0 };
+      if (t.type === 'income') markedDates[dateKey].income += t.amount;
+      else markedDates[dateKey].expense += t.amount;
+    });
 
-  const calendarMarks = {};
-  Object.entries(markedDates).forEach(([date, data]) => {
-    const dots = [];
-    if (data.income > 0) dots.push({ key: 'income', color: Colors.income });
-    if (data.expense > 0) dots.push({ key: 'expense', color: Colors.expense });
-    calendarMarks[date] = { dots, selected: selectedDate === date, selectedColor: Colors.primary + '25' };
-  });
-  if (selectedDate && !calendarMarks[selectedDate]) {
-    calendarMarks[selectedDate] = { selected: true, selectedColor: Colors.primary + '25', dots: [] };
-  }
+    const marks = {};
+    Object.entries(markedDates).forEach(([date, data]) => {
+      const dots = [];
+      if (data.income > 0) dots.push({ key: 'income', color: Colors.income });
+      if (data.expense > 0) dots.push({ key: 'expense', color: Colors.expense });
+      marks[date] = { dots, selected: selectedDate === date, selectedColor: Colors.primary + '25' };
+    });
+    if (selectedDate && !marks[selectedDate]) {
+      marks[selectedDate] = { selected: true, selectedColor: Colors.primary + '25', dots: [] };
+    }
+    return marks;
+  }, [transactions, selectedDate, Colors]);
 
-  const selectedTx = selectedDate ? transactions.filter((t) => t.date.startsWith(selectedDate)) : [];
-  const dayIncome = selectedTx.filter((t) => t.type === 'income').reduce((s, t) => s + t.amount, 0);
-  const dayExpense = selectedTx.filter((t) => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
-  const formatMoney = (n) => Math.abs(n).toLocaleString('ko-KR') + '원';
+  const selectedTx = useMemo(() =>
+    selectedDate ? transactions.filter((t) => t.date.startsWith(selectedDate)) : [],
+    [selectedDate, transactions]
+  );
+  const dayIncome = useMemo(() => selectedTx.filter((t) => t.type === 'income').reduce((s, t) => s + t.amount, 0), [selectedTx]);
+  const dayExpense = useMemo(() => selectedTx.filter((t) => t.type === 'expense').reduce((s, t) => s + t.amount, 0), [selectedTx]);
+  const formatMoney = useCallback((n) => Math.abs(n).toLocaleString('ko-KR') + '원', []);
 
   return (
     <View style={styles.container}>
@@ -70,7 +76,7 @@ export default function CalendarScreen() {
             <Calendar
               markingType="multi-dot"
               markedDates={calendarMarks}
-              onDayPress={(day) => setSelectedDate(day.dateString)}
+              onDayPress={useCallback((day) => setSelectedDate(day.dateString), [])}
               theme={{
                 backgroundColor: Colors.surface, calendarBackground: Colors.surface,
                 textSectionTitleColor: Colors.textGray,

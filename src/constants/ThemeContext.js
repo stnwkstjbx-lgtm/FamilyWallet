@@ -1,4 +1,4 @@
-import React, { createContext, useState, useContext, useEffect } from 'react';
+import React, { createContext, useState, useContext, useEffect, useCallback, useMemo } from 'react';
 import { db } from '../firebase/firebaseConfig';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
@@ -61,7 +61,7 @@ const darkColors = {
   },
 };
 
-const ThemeContext = createContext();
+const ThemeContext = createContext(undefined);
 
 export function ThemeProvider({ children }) {
   const [isDark, setIsDark] = useState(false);
@@ -79,7 +79,9 @@ export function ThemeProvider({ children }) {
             setIsDark(userDoc.data().isDark);
           }
         }
-      } catch (error) {}
+      } catch (error) {
+        console.error('테마 로드 실패:', error);
+      }
       setThemeLoaded(true);
     };
     loadTheme();
@@ -92,7 +94,7 @@ export function ThemeProvider({ children }) {
     return () => unsub();
   }, []);
 
-  const toggleTheme = async () => {
+  const toggleTheme = useCallback(async () => {
     const newValue = !isDark;
     setIsDark(newValue);
     try {
@@ -101,18 +103,28 @@ export function ThemeProvider({ children }) {
       if (currentUser) {
         await updateDoc(doc(db, 'users', currentUser.uid), { isDark: newValue });
       }
-    } catch (error) {}
-  };
+    } catch (error) {
+      console.error('테마 저장 실패:', error);
+    }
+  }, [isDark]);
 
   const colors = isDark ? darkColors : lightColors;
 
+  const value = useMemo(() => ({
+    colors, isDark, toggleTheme, themeLoaded,
+  }), [colors, isDark, toggleTheme, themeLoaded]);
+
   return (
-    <ThemeContext.Provider value={{ colors, isDark, toggleTheme, themeLoaded }}>
+    <ThemeContext.Provider value={value}>
       {children}
     </ThemeContext.Provider>
   );
 }
 
 export function useTheme() {
-  return useContext(ThemeContext);
+  const context = useContext(ThemeContext);
+  if (context === undefined) {
+    throw new Error('useTheme must be used within a ThemeProvider');
+  }
+  return context;
 }

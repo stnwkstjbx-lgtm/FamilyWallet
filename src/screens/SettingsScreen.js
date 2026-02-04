@@ -1,26 +1,18 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, StatusBar, TextInput,
-  TouchableOpacity, Alert, Modal, Switch, Platform,
+  TouchableOpacity, Modal, Switch, Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../constants/ThemeContext';
 import { useAuth } from '../constants/AuthContext';
 import { useWallet } from '../constants/WalletContext';
+import { showAlert } from '../hooks/useAlert';
 import { db } from '../firebase/firebaseConfig';
 import {
   collection, onSnapshot, addDoc, deleteDoc, doc, updateDoc, query,
 } from 'firebase/firestore';
-
-const showAlert = (title, message, buttons) => {
-  if (Platform.OS === 'web') {
-    if (buttons) {
-      const confirmed = window.confirm(`${title}\n\n${message}`);
-      if (confirmed && buttons[1]) buttons[1].onPress();
-    } else { window.alert(`${title}\n\n${message}`); }
-  } else { Alert.alert(title, message, buttons); }
-};
 
 export default function SettingsScreen() {
   const { colors: Colors, isDark, toggleTheme } = useTheme();
@@ -29,7 +21,7 @@ export default function SettingsScreen() {
     currentWalletId, currentWallet, isAdmin, userWallets, maxWallets,
     switchWallet, leaveWallet, regenerateInviteCode, getInviteLink, goToWalletList,
   } = useWallet();
-  const styles = getStyles(Colors);
+  const styles = useMemo(() => getStyles(Colors), [Colors]);
 
   const [fixedExpenses, setFixedExpenses] = useState([]);
   const [showFixedModal, setShowFixedModal] = useState(false);
@@ -80,29 +72,21 @@ export default function SettingsScreen() {
   const totalAllowance = members.reduce((s, m) => s + (m.allowance || 0), 0);
   const fixedTotal = fixedExpenses.reduce((s, i) => s + i.amount, 0);
 
-  const handleSaveName = async () => {
-    if (!newName.trim()) return;
-    await updateUserProfile({ name: newName.trim() });
-    if (currentWalletId && user) {
-      await updateDoc(doc(db, 'wallets', currentWalletId), {
-        [`members.${user.uid}.name`]: newName.trim(),
-      });
-    }
-    showAlert('수정 완료! ✅', `이름이 "${newName.trim()}"(으)로 변경되었습니다.`);
-    setShowNameModal(false);
-  };
-
-  const handleSetAllowance = async () => {
+  const handleSetAllowance = useCallback(async () => {
     if (!selectedMember) return;
-    const amt = parseInt(allowanceAmount) || 0;
+    const amt = parseInt(allowanceAmount, 10) || 0;
+    if (amt < 0 || amt > 999999999) {
+      showAlert('알림', '올바른 금액을 입력해 주세요! (0 ~ 999,999,999)');
+      return;
+    }
     await updateDoc(doc(db, 'wallets', currentWalletId), {
       [`members.${selectedMember.uid}.allowance`]: amt,
     });
-    showAlert('설정 완료! ✅', `${selectedMember.name}님의 월 용돈: ${amt.toLocaleString('ko-KR')}원`);
+    showAlert('설정 완료!', `${selectedMember.name}님의 월 용돈: ${amt.toLocaleString('ko-KR')}원`);
     setShowAllowanceModal(false);
-  };
+  }, [selectedMember, allowanceAmount, currentWalletId]);
 
-  const handleAddFixed = async () => {
+  const handleAddFixed = useCallback(async () => {
     if (!fixedName || !fixedAmount || !fixedDay) { showAlert('알림', '모든 항목을 입력해 주세요!'); return; }
     const day = parseInt(fixedDay);
     if (day < 1 || day > 31) { showAlert('알림', '1~31 사이 입력!'); return; }
@@ -110,16 +94,16 @@ export default function SettingsScreen() {
       name: fixedName, amount: parseInt(fixedAmount), day, lastRecordedMonth: '', createdAt: new Date().toISOString(),
     });
     setFixedName(''); setFixedAmount(''); setFixedDay(''); setShowFixedModal(false);
-  };
+  }, [fixedName, fixedAmount, fixedDay, currentWalletId]);
 
-  const handleDeleteFixed = (id, name) => {
+  const handleDeleteFixed = useCallback((id, name) => {
     showAlert('삭제', `"${name}" 삭제?`, [
       { text: '취소' },
       { text: '삭제', onPress: () => deleteDoc(doc(db, 'wallets', currentWalletId, 'fixedExpenses', id)) },
     ]);
-  };
+  }, [currentWalletId]);
 
-  const handleCopyInvite = () => {
+  const handleCopyInvite = useCallback(() => {
     const link = getInviteLink();
     const code = currentWallet?.inviteCode || '';
     if (typeof navigator !== 'undefined' && navigator.clipboard) {
@@ -128,15 +112,15 @@ export default function SettingsScreen() {
     } else {
       showAlert('초대 정보', `코드: ${code}\n링크: ${link}`);
     }
-  };
+  }, [getInviteLink, currentWallet?.inviteCode]);
 
-  const handleRegenCode = async () => {
+  const handleRegenCode = useCallback(async () => {
     const result = await regenerateInviteCode();
     if (result.success) showAlert('재생성 완료!', `새 초대 코드: ${result.inviteCode}`);
-  };
+  }, [regenerateInviteCode]);
 
   // 가계부 나가기 — 모든 사용자 가능
-  const handleLeaveWallet = () => {
+  const handleLeaveWallet = useCallback(() => {
     const memberCount = members.length;
 
     if (isAdmin && memberCount > 1) {
@@ -182,16 +166,33 @@ export default function SettingsScreen() {
         ]
       );
     }
-  };
+  }, [members, isAdmin, currentWallet, currentWalletId, user, leaveWallet]);
 
-  const handleLogout = () => {
+  const handleLogout = useCallback(() => {
     showAlert('로그아웃', '정말 로그아웃 하시겠습니까?', [
       { text: '취소' },
       { text: '로그아웃', onPress: () => logout() },
     ]);
-  };
+  }, [logout]);
 
-  const formatMoney = (n) => n.toLocaleString('ko-KR') + '원';
+  const handleSaveName = useCallback(async () => {
+    const trimmedName = newName.trim();
+    if (!trimmedName) return;
+    if (trimmedName.length > 20) {
+      showAlert('알림', '이름은 20자 이내로 입력해 주세요!');
+      return;
+    }
+    await updateUserProfile({ name: trimmedName });
+    if (currentWalletId && user) {
+      await updateDoc(doc(db, 'wallets', currentWalletId), {
+        [`members.${user.uid}.name`]: trimmedName,
+      });
+    }
+    showAlert('수정 완료!', `이름이 "${trimmedName}"(으)로 변경되었습니다.`);
+    setShowNameModal(false);
+  }, [newName, updateUserProfile, currentWalletId, user]);
+
+  const formatMoney = useCallback((n) => n.toLocaleString('ko-KR') + '원', []);
   const userName = userProfile?.name || user?.displayName || '사용자';
 
   return (

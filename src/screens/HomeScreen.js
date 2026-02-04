@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, StatusBar, ActivityIndicator,
-  TouchableOpacity, Alert, Modal, TextInput, Platform, Animated,
+  TouchableOpacity, Modal, TextInput, Platform, Animated,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -9,25 +9,17 @@ import { useTheme } from '../constants/ThemeContext';
 import { useAuth } from '../constants/AuthContext';
 import { useWallet } from '../constants/WalletContext';
 import { ALL_CATEGORY_NAMES, ALL_CATEGORY_ICONS, EXPENSE_CATEGORIES, INCOME_CATEGORIES } from '../constants/categories';
+import { showAlert } from '../hooks/useAlert';
 import { db } from '../firebase/firebaseConfig';
 import {
   collection, onSnapshot, orderBy, query, deleteDoc, doc, getDocs, updateDoc, addDoc,
 } from 'firebase/firestore';
 
-const showAlert = (title, message, buttons) => {
-  if (Platform.OS === 'web') {
-    if (buttons) {
-      const confirmed = window.confirm(`${title}\n\n${message}`);
-      if (confirmed && buttons[1]) buttons[1].onPress();
-    } else { window.alert(`${title}\n\n${message}`); }
-  } else { Alert.alert(title, message, buttons); }
-};
-
 export default function HomeScreen() {
   const { colors: Colors, isDark } = useTheme();
   const { user, userProfile } = useAuth();
   const { currentWalletId, currentWallet, isAdmin } = useWallet();
-  const styles = getStyles(Colors);
+  const styles = useMemo(() => getStyles(Colors), [Colors]);
 
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -110,14 +102,14 @@ export default function HomeScreen() {
     }).start();
   }, [showQuickAdd]);
 
-  const handleEdit = (item) => {
+  const handleEdit = useCallback((item) => {
     setEditingItem(item); setEditAmount(String(item.amount));
     setEditCategory(item.category); setEditMemo(item.memo || '');
     setEditType(item.type); setEditFundType(item.fundType || 'shared');
     setShowEditModal(true);
-  };
-  
-  const handleSaveEdit = async () => {
+  }, []);
+
+  const handleSaveEdit = useCallback(async () => {
     if (!editAmount || editAmount === '0') { showAlert('알림', '금액을 입력해 주세요!'); return; }
     try {
       const updateData = { amount: parseInt(editAmount), category: editCategory, memo: editMemo, type: editType };
@@ -125,17 +117,17 @@ export default function HomeScreen() {
       await updateDoc(doc(db, 'wallets', currentWalletId, 'transactions', editingItem.id), updateData);
       setShowEditModal(false); showAlert('수정 완료! ✅', '내역이 수정되었습니다.');
     } catch (error) { showAlert('오류', '수정에 실패했습니다.'); }
-  };
-  
-  const handleDelete = (id, title) => {
+  }, [editAmount, editCategory, editMemo, editType, editFundType, editingItem, currentWalletId]);
+
+  const handleDelete = useCallback((id, title) => {
     showAlert('삭제 확인', `"${title}" 삭제?`, [
       { text: '취소' },
       { text: '삭제', onPress: () => deleteDoc(doc(db, 'wallets', currentWalletId, 'transactions', id)) },
     ]);
-  };
+  }, [currentWalletId]);
 
   // ★ 빠른 등록
-  const handleQuickAdd = async () => {
+  const handleQuickAdd = useCallback(async () => {
     if (!quickAmount || quickAmount === '0') { showAlert('알림', '금액을 입력해 주세요!'); return; }
     if (!quickCategory) { showAlert('알림', '카테고리를 선택해 주세요!'); return; }
     
@@ -163,7 +155,7 @@ export default function HomeScreen() {
     } catch (error) {
       showAlert('오류', '등록에 실패했습니다.');
     }
-  };
+  }, [quickAmount, quickCategory, quickType, quickMemo, quickFundType, currentWalletId, user, currentWallet, userProfile]);
 
   const now = new Date();
   const thisMonth = now.getMonth();
@@ -235,12 +227,12 @@ export default function HomeScreen() {
   const quickCategories = quickType === 'expense' ? EXPENSE_CATEGORIES : INCOME_CATEGORIES;
 
   // 필터 리셋
-  const resetFilters = () => {
+  const resetFilters = useCallback(() => {
     setFilterType('all');
     setFilterFundType('all');
     setFilterCategory('all');
     setSearchText('');
-  };
+  }, []);
 
   const hasActiveFilter = filterType !== 'all' || filterFundType !== 'all' || filterCategory !== 'all' || searchText;
 
