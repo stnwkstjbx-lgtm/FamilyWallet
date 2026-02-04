@@ -27,7 +27,7 @@ export default function SettingsScreen() {
   const { user, userProfile, logout, updateUserProfile } = useAuth();
   const {
     currentWalletId, currentWallet, isAdmin, userWallets, maxWallets,
-    switchWallet, leaveWallet, regenerateInviteCode, getInviteLink, goToWalletList,
+    switchWallet, leaveWallet, regenerateInviteCode, getInviteLink, goToWalletList, toggleAdmin,
   } = useWallet();
   const styles = getStyles(Colors);
 
@@ -135,17 +135,39 @@ export default function SettingsScreen() {
     if (result.success) showAlert('재생성 완료!', `새 초대 코드: ${result.inviteCode}`);
   };
 
+  // 관리자 지정/해제
+  const handleToggleAdmin = (member) => {
+    const isTargetAdmin = member.role === 'admin';
+    const action = isTargetAdmin ? '해제' : '지정';
+    showAlert(
+      `관리자 ${action}`,
+      `"${member.name}"님을 관리자에서 ${action}하시겠습니까?`,
+      [
+        { text: '취소' },
+        { text: action, onPress: async () => {
+          const result = await toggleAdmin(member.uid);
+          if (result.success) {
+            showAlert('완료', `"${member.name}"님이 ${result.newRole === 'admin' ? '관리자로 지정' : '일반 멤버로 변경'}되었습니다.`);
+          } else {
+            showAlert('오류', result.message);
+          }
+        }},
+      ]
+    );
+  };
+
   // 가계부 나가기 — 모든 사용자 가능
   const handleLeaveWallet = () => {
     const memberCount = members.length;
+    const otherAdmins = members.filter(m => m.uid !== user.uid && m.role === 'admin');
 
     if (isAdmin && memberCount > 1) {
-      // 관리자가 나가면 다음 멤버에게 관리자 위임됨을 안내
-      const otherMembers = members.filter((m) => m.uid !== user.uid);
-      const nextAdmin = otherMembers[0];
+      const msg = otherAdmins.length > 0
+        ? `다른 관리자가 있으므로 안전하게 나갈 수 있습니다.\n\n정말 "${currentWallet?.name}" 가계부에서 나가시겠습니까?`
+        : `관리자가 나가면 다른 멤버에게 관리자 역할이 자동으로 넘어갑니다.\n\n정말 "${currentWallet?.name}" 가계부에서 나가시겠습니까?`;
       showAlert(
         '가계부 나가기',
-        `관리자가 나가면 "${nextAdmin.name}"님에게 관리자 역할이 자동으로 넘어갑니다.\n\n정말 "${currentWallet?.name}" 가계부에서 나가시겠습니까?`,
+        msg,
         [
           { text: '취소' },
           { text: '나가기', onPress: async () => {
@@ -349,6 +371,14 @@ export default function SettingsScreen() {
                         <Text style={styles.mName}>{m.name}{m.role === 'admin' ? ' 👑' : ''}</Text>
                         <Text style={styles.mEmail}>{m.email}</Text>
                       </View>
+                      {m.uid !== user?.uid && (
+                        <TouchableOpacity
+                          style={[styles.adminToggleBtn, m.role === 'admin' && styles.adminToggleBtnActive]}
+                          onPress={() => handleToggleAdmin(m)}
+                        >
+                          <Ionicons name="shield-checkmark" size={14} color={m.role === 'admin' ? '#fff' : Colors.primary} />
+                        </TouchableOpacity>
+                      )}
                       <TouchableOpacity style={styles.allowBtn} onPress={() => { setSelectedMember(m); setAllowanceAmount(String(allow)); setShowAllowanceModal(true); }}>
                         <Text style={styles.allowBtnText}>용돈</Text>
                       </TouchableOpacity>
@@ -499,6 +529,8 @@ const getStyles = (Colors) => StyleSheet.create({
   mInfo: { flex: 1, marginLeft: 10 },
   mName: { fontSize: 15, fontWeight: 'bold', color: Colors.textBlack },
   mEmail: { fontSize: 11, color: Colors.textGray },
+  adminToggleBtn: { width: 30, height: 30, borderRadius: 8, borderWidth: 1.5, borderColor: Colors.primary, justifyContent: 'center', alignItems: 'center', marginRight: 6 },
+  adminToggleBtnActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
   allowBtn: { backgroundColor: Colors.primary, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 7 },
   allowBtnText: { fontSize: 12, fontWeight: 'bold', color: '#FFF' },
   mAllowInfo: { marginTop: 8 },

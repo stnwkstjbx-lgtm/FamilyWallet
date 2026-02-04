@@ -160,11 +160,21 @@ export function WalletProvider({ children }) {
       if (memberIds.length === 1) {
         await deleteDoc(walletRef);
       } else if (data.members[user.uid]?.role === 'admin') {
-        const nextAdminId = memberIds.find((id) => id !== user.uid);
-        await updateDoc(walletRef, {
-          [`members.${nextAdminId}.role`]: 'admin',
-          [`members.${user.uid}`]: deleteField(),
-        });
+        // 다른 관리자가 있는지 확인
+        const otherAdmins = memberIds.filter(id => id !== user.uid && data.members[id]?.role === 'admin');
+        if (otherAdmins.length > 0) {
+          // 다른 관리자가 있으면 그냥 나가기
+          await updateDoc(walletRef, {
+            [`members.${user.uid}`]: deleteField(),
+          });
+        } else {
+          // 관리자가 나 혼자면 다음 멤버에게 관리자 위임
+          const nextAdminId = memberIds.find((id) => id !== user.uid);
+          await updateDoc(walletRef, {
+            [`members.${nextAdminId}.role`]: 'admin',
+            [`members.${user.uid}`]: deleteField(),
+          });
+        }
       } else {
         await updateDoc(walletRef, {
           [`members.${user.uid}`]: deleteField(),
@@ -180,6 +190,41 @@ export function WalletProvider({ children }) {
       return { success: true };
     } catch (error) {
       return { success: false, message: error.message || '나가기에 실패했습니다' };
+    }
+  };
+
+  // 관리자 지정/해제 (최대 3명)
+  const MAX_ADMINS = 3;
+  const toggleAdmin = async (targetUid) => {
+    try {
+      if (!currentWalletId || !isAdmin || !user) return { success: false, message: '권한이 없습니다' };
+      if (targetUid === user.uid) return { success: false, message: '본인의 권한은 변경할 수 없습니다' };
+
+      const members = currentWallet?.members || {};
+      const targetMember = members[targetUid];
+      if (!targetMember) return { success: false, message: '멤버를 찾을 수 없습니다' };
+
+      const isTargetAdmin = targetMember.role === 'admin';
+
+      if (isTargetAdmin) {
+        // 관리자 해제
+        await updateDoc(doc(db, 'wallets', currentWalletId), {
+          [`members.${targetUid}.role`]: 'member',
+        });
+        return { success: true, newRole: 'member' };
+      } else {
+        // 관리자 지정 - 최대 인원 확인
+        const adminCount = Object.values(members).filter(m => m.role === 'admin').length;
+        if (adminCount >= MAX_ADMINS) {
+          return { success: false, message: `관리자는 최대 ${MAX_ADMINS}명까지 지정할 수 있습니다` };
+        }
+        await updateDoc(doc(db, 'wallets', currentWalletId), {
+          [`members.${targetUid}.role`]: 'admin',
+        });
+        return { success: true, newRole: 'admin' };
+      }
+    } catch (error) {
+      return { success: false, message: error.message || '권한 변경에 실패했습니다' };
     }
   };
 
@@ -559,6 +604,7 @@ export function WalletProvider({ children }) {
     switchWallet,
     leaveWallet,
     goToWalletList,
+    toggleAdmin,
     
     // 초대코드 관련
     regenerateInviteCode,
