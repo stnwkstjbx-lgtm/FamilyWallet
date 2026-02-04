@@ -8,6 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../constants/ThemeContext';
 import { useAuth } from '../constants/AuthContext';
 import { useWallet } from '../constants/WalletContext';
+import { FUND_TYPES, FUND_TYPE_MAP } from '../constants/categories';
 import { db } from '../firebase/firebaseConfig';
 import {
   collection, onSnapshot, addDoc, deleteDoc, doc, updateDoc, query,
@@ -38,6 +39,7 @@ export default function SettingsScreen() {
   const [fixedAmount, setFixedAmount] = useState('');
   const [fixedDay, setFixedDay] = useState('');
   const [fixedType, setFixedType] = useState('expense'); // 'expense' or 'income'
+  const [fixedFundType, setFixedFundType] = useState('utility'); // 고정지출 출처
   const [showNameModal, setShowNameModal] = useState(false);
   const [newName, setNewName] = useState('');
   const [showAllowanceModal, setShowAllowanceModal] = useState(false);
@@ -121,11 +123,13 @@ export default function SettingsScreen() {
     if (!fixedName || !fixedAmount || !fixedDay) { showAlert('알림', '모든 항목을 입력해 주세요!'); return; }
     const day = parseInt(fixedDay);
     if (day < 1 || day > 31) { showAlert('알림', '1~31 사이 입력!'); return; }
-    await addDoc(collection(db, 'wallets', currentWalletId, 'fixedExpenses'), {
+    const docData = {
       name: fixedName, amount: parseInt(fixedAmount), day, type: fixedType,
       lastRecordedMonth: '', createdAt: new Date().toISOString(),
-    });
-    setFixedName(''); setFixedAmount(''); setFixedDay(''); setFixedType('expense'); setShowFixedModal(false);
+    };
+    if (fixedType === 'expense') docData.fundType = fixedFundType;
+    await addDoc(collection(db, 'wallets', currentWalletId, 'fixedExpenses'), docData);
+    setFixedName(''); setFixedAmount(''); setFixedDay(''); setFixedType('expense'); setFixedFundType('utility'); setShowFixedModal(false);
   };
 
   const handleDeleteFixed = (id, name) => {
@@ -522,6 +526,7 @@ export default function SettingsScreen() {
               {fixedExpenses.length === 0 ? <Text style={styles.emptyText}>등록된 고정 내역이 없어요</Text> : (
                 fixedExpenses.map((item) => {
                   const isIncome = item.type === 'income';
+                  const ftInfo = !isIncome ? (FUND_TYPE_MAP[item.fundType] || FUND_TYPE_MAP['utility']) : null;
                   return (
                     <View key={item.id} style={styles.fixedRow}>
                       <View style={[styles.fixedDayBadge, isIncome && { backgroundColor: Colors.income + '15' }]}>
@@ -529,9 +534,16 @@ export default function SettingsScreen() {
                       </View>
                       <View style={{ flex: 1 }}>
                         <Text style={styles.fixedName}>{item.name}</Text>
-                        <Text style={{ fontSize: 10, color: isIncome ? Colors.income : Colors.textGray, marginTop: 1 }}>
-                          {isIncome ? '수입' : '지출'}
-                        </Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
+                          {isIncome ? (
+                            <Text style={{ fontSize: 10, color: Colors.income }}>수입</Text>
+                          ) : ftInfo ? (
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: ftInfo.color + '12', borderRadius: 4, paddingHorizontal: 5, paddingVertical: 1 }}>
+                              <Ionicons name={ftInfo.icon} size={9} color={ftInfo.color} />
+                              <Text style={{ fontSize: 10, fontWeight: '600', color: ftInfo.color }}>{ftInfo.name}</Text>
+                            </View>
+                          ) : null}
+                        </View>
                       </View>
                       <Text style={[styles.fixedAmt, { color: isIncome ? Colors.income : Colors.textBlack }]}>
                         {isIncome ? '+' : ''}{formatMoney(item.amount)}
@@ -611,9 +623,23 @@ export default function SettingsScreen() {
           </View>
           <TextInput style={styles.modalInput} placeholder="항목명" placeholderTextColor={Colors.textLight} value={fixedName} onChangeText={setFixedName} />
           <TextInput style={styles.modalInput} placeholder="금액" placeholderTextColor={Colors.textLight} keyboardType="numeric" value={fixedAmount} onChangeText={(t) => setFixedAmount(t.replace(/[^0-9]/g, ''))} />
+          {fixedType === 'expense' && (
+            <View style={styles.fixedFundTypeRow}>
+              {FUND_TYPES.filter(ft => ft.id !== 'personal').map((ft) => (
+                <TouchableOpacity
+                  key={ft.id}
+                  style={[styles.fixedFundChip, fixedFundType === ft.id && { backgroundColor: ft.color + '18', borderColor: ft.color }]}
+                  onPress={() => setFixedFundType(ft.id)}
+                >
+                  <Ionicons name={ft.icon} size={12} color={fixedFundType === ft.id ? ft.color : Colors.textGray} />
+                  <Text style={[styles.fixedFundChipText, fixedFundType === ft.id && { color: ft.color }]}>{ft.name}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
           <View style={styles.dayRow}><Text style={styles.dayLabel}>매월</Text><TextInput style={styles.dayInput} placeholder="5" placeholderTextColor={Colors.textLight} keyboardType="numeric" maxLength={2} value={fixedDay} onChangeText={(t) => setFixedDay(t.replace(/[^0-9]/g, ''))} /><Text style={styles.dayLabel}>일</Text></View>
           <View style={styles.modalBtns}>
-            <TouchableOpacity style={styles.modalCancelBtn} onPress={() => { setShowFixedModal(false); setFixedName(''); setFixedAmount(''); setFixedDay(''); setFixedType('expense'); }}><Text style={styles.modalCancelText}>취소</Text></TouchableOpacity>
+            <TouchableOpacity style={styles.modalCancelBtn} onPress={() => { setShowFixedModal(false); setFixedName(''); setFixedAmount(''); setFixedDay(''); setFixedType('expense'); setFixedFundType('utility'); }}><Text style={styles.modalCancelText}>취소</Text></TouchableOpacity>
             <TouchableOpacity style={styles.modalSaveBtn} onPress={handleAddFixed}><Text style={styles.modalSaveText}>추가</Text></TouchableOpacity>
           </View>
         </View></View>
@@ -802,6 +828,9 @@ const getStyles = (Colors) => StyleSheet.create({
   fixedToggleRow: { flexDirection: 'row', gap: 10, marginBottom: 16 },
   fixedToggleBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 12, backgroundColor: Colors.background, borderWidth: 1.5, borderColor: Colors.border },
   fixedToggleText: { fontSize: 14, fontWeight: '600', color: Colors.textGray },
+  fixedFundTypeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 },
+  fixedFundChip: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 8, backgroundColor: Colors.background, borderWidth: 1.5, borderColor: Colors.border },
+  fixedFundChipText: { fontSize: 11, fontWeight: '600', color: Colors.textGray },
   // 비밀번호 재설정
   resetPwBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, marginTop: 8, borderRadius: 10, backgroundColor: Colors.primary + '10' },
   resetPwText: { fontSize: 13, fontWeight: '600', color: Colors.primary },

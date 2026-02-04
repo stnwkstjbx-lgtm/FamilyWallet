@@ -104,7 +104,7 @@ export default function HomeScreen() {
               createdAt: new Date().toISOString(),
               fixedExpenseId: fixedDoc.id,
             };
-            if (!isIncome) txData.fundType = 'utility';
+            if (!isIncome) txData.fundType = data.fundType || 'utility';
             await addDoc(collection(db, 'wallets', currentWalletId, 'transactions'), txData);
             await updateDoc(doc(db, 'wallets', currentWalletId, 'fixedExpenses', fixedDoc.id), { lastRecordedMonth: currentMonth });
             if (isIncome) incCount++; else expCount++;
@@ -114,7 +114,7 @@ export default function HomeScreen() {
         if (expCount > 0) msgs.push(`고정 지출 ${expCount}건`);
         if (incCount > 0) msgs.push(`고정 수입 ${incCount}건`);
         if (msgs.length > 0) showAlert('자동 기록 📋', `${msgs.join(', ')} 자동 기록 완료!`);
-      } catch (error) { console.error('자동 기록 오류:', error); }
+      } catch (error) { if (__DEV__) console.error('자동 기록 오류:', error); }
     };
     autoRecord();
   }, [isAdmin, currentWalletId]);
@@ -192,15 +192,18 @@ export default function HomeScreen() {
     if (day < 1 || day > 31) { showAlert('알림', '1~31 사이 날짜를 입력해 주세요!'); return; }
     const label = fixedType === 'income' ? '수입' : '지출';
     try {
-      await addDoc(collection(db, 'wallets', currentWalletId, 'fixedExpenses'), {
+      const docData = {
         name: fixedName.trim(), amount: parseInt(quickAmount), day, type: fixedType,
         lastRecordedMonth: '', createdAt: new Date().toISOString(),
-      });
+      };
+      if (fixedType === 'expense') docData.fundType = quickFundType;
+      await addDoc(collection(db, 'wallets', currentWalletId, 'fixedExpenses'), docData);
       setShowQuickAdd(false);
       setQuickAmount('');
       setFixedName('');
       setFixedDay('');
       setFixedType('expense');
+      setQuickFundType('shared');
       showAlert('등록 완료! ✅', `고정 ${label} "${fixedName.trim()}"이 등록되었습니다.\n매월 ${day}일에 자동 기록됩니다.`);
     } catch (error) {
       showAlert('오류', '등록에 실패했습니다.');
@@ -411,7 +414,7 @@ export default function HomeScreen() {
             ) : (
               <>
                 <Text style={styles.balanceLabel}>
-                  {myAllowance > 0 ? '내 용돈 잔액' : sharedBudgetInfo ? '공금 잔액' : '이번 달 내 지출'}
+                  {myAllowance > 0 ? `내 ${FUND_TYPE_MAP.personal?.name || '용돈'} 잔액` : sharedBudgetInfo ? `${FUND_TYPE_MAP.shared?.name || '공금'} 잔액` : '이번 달 내 지출'}
                 </Text>
                 <Text style={styles.balanceAmount}>
                   {myAllowance > 0
@@ -1000,8 +1003,22 @@ export default function HomeScreen() {
                   />
                   <Text style={styles.fixedDayLabel}>일</Text>
                 </View>
+                {fixedType === 'expense' && (
+                  <View style={styles.fundSelector}>
+                    {FUND_TYPES.filter(ft => ft.id !== 'personal').map((ft) => (
+                      <TouchableOpacity
+                        key={ft.id}
+                        style={[styles.fundBtn, quickFundType === ft.id && { backgroundColor: ft.color + '20', borderColor: ft.color }]}
+                        onPress={() => setQuickFundType(ft.id)}
+                      >
+                        <Ionicons name={ft.icon} size={14} color={ft.color} />
+                        <Text style={[styles.fundBtnText, { color: ft.color }]}>{ft.name}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
                 <Text style={styles.fixedDayHint}>
-                  해당 날짜에 {fixedType === 'income' ? '수입' : '공금 지출'}으로 자동 기록됩니다
+                  해당 날짜에 {fixedType === 'income' ? '수입(급여 카테고리)' : `${FUND_TYPE_MAP[quickFundType]?.name || '공과금'} 지출(주거 카테고리)`}로 자동 기록됩니다
                 </Text>
 
                 <View style={styles.modalBtns}>

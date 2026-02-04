@@ -24,7 +24,7 @@ import {
 import { db } from '../firebase/firebaseConfig';
 import { useAuth } from './AuthContext';
 import NotificationService from '../services/NotificationService';
-import { ASSET_FUND_TYPES } from './categories';
+import { ASSET_FUND_TYPES, FUND_TYPE_MAP } from './categories';
 
 const WalletContext = createContext();
 export const useWallet = () => useContext(WalletContext);
@@ -71,7 +71,8 @@ export function WalletProvider({ children }) {
     const spent = rawTransactions
       .filter((tx) => {
         if (tx.type !== 'expense') return false;
-        if (tx.fundType === 'personal' || tx.fundType === 'allowance_allocation') return false;
+        const ft = tx.fundType || 'shared';
+        if (ft !== 'shared' && ft !== 'utility') return false;
         return (tx.date?.slice(0, 7) || '') === ym;
       })
       .reduce((sum, tx) => sum + (tx.amount || 0), 0);
@@ -417,7 +418,7 @@ export function WalletProvider({ children }) {
     await addDoc(txRef, {
       type: 'expense',
       fundType: 'allowance_allocation',
-      category: '용돈',
+      category: FUND_TYPE_MAP.personal?.name || '용돈',
       amount,
       description: `${memberName} 용돈 (${ym})`,
       date: `${ym}-01`,

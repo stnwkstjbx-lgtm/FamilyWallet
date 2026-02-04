@@ -50,6 +50,7 @@ export default function AddScreen() {
   const [fixedName, setFixedName] = useState('');
   const [fixedDay, setFixedDay] = useState('');
   const [fixedType, setFixedType] = useState('expense'); // 'expense' or 'income'
+  const [fixedFundType, setFixedFundType] = useState('utility'); // 고정지출 출처
 
   useEffect(() => { setSelectedCategory(null); }, [type]);
 
@@ -104,12 +105,14 @@ export default function AddScreen() {
     if (!currentWalletId) { showAlert('알림', '가계부가 선택되지 않았습니다.'); return; }
     const label = fixedType === 'income' ? '수입' : '지출';
     try {
-      await addDoc(collection(db, 'wallets', currentWalletId, 'fixedExpenses'), {
+      const docData = {
         name: fixedName.trim(), amount: parseInt(amount), day, type: fixedType,
         lastRecordedMonth: '', createdAt: new Date().toISOString(),
-      });
+      };
+      if (fixedType === 'expense') docData.fundType = fixedFundType;
+      await addDoc(collection(db, 'wallets', currentWalletId, 'fixedExpenses'), docData);
       showAlert('등록 완료! ✅', `고정 ${label} "${fixedName.trim()}"이 등록되었습니다.\n매월 ${day}일에 자동 기록됩니다.`);
-      setAmount(''); setFixedName(''); setFixedDay(''); setFixedType('expense');
+      setAmount(''); setFixedName(''); setFixedDay(''); setFixedType('expense'); setFixedFundType('utility');
     } catch (error) {
       if (__DEV__) console.error('저장 실패:', error);
       showAlert('오류', '저장에 실패했습니다.');
@@ -242,10 +245,35 @@ export default function AddScreen() {
                   <View style={styles.fixedDayHint}>
                     <Ionicons name="information-circle-outline" size={14} color={Colors.textGray} />
                     <Text style={styles.fixedDayHintText}>
-                      해당 날짜에 {fixedType === 'income' ? '수입(급여 카테고리)' : '공과금 지출(주거 카테고리)'}로 자동 기록됩니다
+                      해당 날짜에 {fixedType === 'income' ? '수입(급여 카테고리)' : `${FUND_TYPE_MAP[fixedFundType]?.name || '공과금'} 지출(주거 카테고리)`}로 자동 기록됩니다
                     </Text>
                   </View>
                 </View>
+
+                {/* 지출 출처 선택 (고정 지출일 때만) */}
+                {fixedType === 'expense' && (
+                  <View style={styles.fundTypeCard}>
+                    <Text style={styles.fundTypeLabel}>💳 지출 출처</Text>
+                    <View style={styles.fundTypeGrid}>
+                      {FUND_TYPES.filter(ft => ft.id !== 'personal').map((ft) => {
+                        const isActive = fixedFundType === ft.id;
+                        return (
+                          <TouchableOpacity
+                            key={ft.id}
+                            style={[styles.fundTypeChip, isActive && { backgroundColor: ft.color, borderColor: ft.color }]}
+                            onPress={() => setFixedFundType(ft.id)}
+                          >
+                            <Ionicons name={ft.icon} size={16} color={isActive ? '#FFF' : ft.color} />
+                            <Text style={[styles.fundTypeChipText, isActive && { color: '#FFF' }]}>{ft.name}</Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                    <Text style={styles.fundTypeDescText}>
+                      {FUND_TYPE_MAP[fixedFundType]?.desc || ''}
+                    </Text>
+                  </View>
+                )}
 
                 {/* 저장 */}
                 <TouchableOpacity style={styles.saveButton} onPress={handleSaveFixed} activeOpacity={0.85}>
