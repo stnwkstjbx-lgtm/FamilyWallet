@@ -50,8 +50,8 @@ export default function TabNavigator() {
     >
       <Tab.Screen name="홈" component={HomeScreen} />
       <Tab.Screen name="추가" component={AddScreen} />
-      <Tab.Screen name="분석" component={InsightsScreen} />
       <Tab.Screen name="자산" component={AssetScreen} />
+      <Tab.Screen name="분석" component={InsightsScreen} />
       <Tab.Screen name="설정" component={SettingsScreen} />
     </Tab.Navigator>
   );

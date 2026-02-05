@@ -8,7 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../constants/ThemeContext';
 import { useAuth } from '../constants/AuthContext';
 import { useWallet } from '../constants/WalletContext';
-import { EXPENSE_CATEGORIES, INCOME_CATEGORIES, FUND_TYPES, FUND_TYPE_MAP } from '../constants/categories';
+import { EXPENSE_CATEGORIES, INCOME_CATEGORIES, FUND_TYPES, FUND_TYPE_MAP, FUND_EXPENSE_CATEGORIES } from '../constants/categories';
 import { db } from '../firebase/firebaseConfig';
 import { collection, addDoc } from 'firebase/firestore';
 import { formatAmountInput, parseAmount, validateAmount, validateFundType } from '../utils/format';
@@ -54,9 +54,12 @@ export default function AddScreen() {
   const [fixedFundType, setFixedFundType] = useState('utility'); // 고정지출 출처
 
   useEffect(() => { setSelectedCategory(null); }, [type]);
+  useEffect(() => { setSelectedCategory(null); }, [fundType]);
 
   const customCats = (currentWallet?.customCategories || []).map(c => ({ id: c.id, name: c.name, icon: c.icon }));
-  const currentCategories = type === 'expense' ? [...EXPENSE_CATEGORIES, ...customCats] : INCOME_CATEGORIES;
+  const currentCategories = type === 'income'
+    ? INCOME_CATEGORIES
+    : [...(FUND_EXPENSE_CATEGORIES[fundType] || EXPENSE_CATEGORIES), ...customCats];
   const myWalletName = currentWallet?.members?.[user?.uid]?.name || userProfile?.name || user?.displayName || '미지정';
   const myAllowance = currentWallet?.members?.[user?.uid]?.allowance || 0;
 

@@ -7,7 +7,7 @@ import { Calendar, LocaleConfig } from 'react-native-calendars';
 import { useTheme } from '../constants/ThemeContext';
 import { useAuth } from '../constants/AuthContext';
 import { useWallet } from '../constants/WalletContext';
-import { ALL_CATEGORY_NAMES, ALL_CATEGORY_ICONS, EXPENSE_CATEGORIES, FUND_TYPES, FUND_TYPE_MAP } from '../constants/categories';
+import { ALL_CATEGORY_NAMES, ALL_CATEGORY_ICONS, EXPENSE_CATEGORIES, FUND_TYPES, FUND_TYPE_MAP, FUND_EXPENSE_CATEGORIES } from '../constants/categories';
 import { formatAmountInput, parseAmount, validateAmount } from '../utils/format';
 import { db } from '../firebase/firebaseConfig';
 import { collection, onSnapshot, query, where, orderBy, addDoc } from 'firebase/firestore';
@@ -484,25 +484,31 @@ export default function InsightsScreen() {
             <View style={styles.fundBarRow}>
               {FUND_TYPES.map((ft) => {
                 const amt = fundBreakdown[ft.id] || 0;
-                const pct = totalExpense > 0 ? Math.round((amt / totalExpense) * 100) : 0;
+                const pct = totalExpense > 0 ? (amt / totalExpense) * 100 : 0;
                 if (pct === 0) return null;
-                return <View key={ft.id} style={[styles.fundBar, { flex: pct, backgroundColor: ft.color }]}>{pct >= 15 && <Text style={styles.fundBarText}>{ft.name} {pct}%</Text>}</View>;
+                const displayPct = Math.max(pct, 5);
+                return <View key={ft.id} style={[styles.fundBar, { flex: displayPct, backgroundColor: ft.color }]}>{pct >= 12 && <Text style={styles.fundBarText}>{ft.name} {Math.round(pct)}%</Text>}</View>;
               })}
             </View>
-            <View style={styles.fundLegendRow}>
-              {FUND_TYPES.map((ft) => {
+            {/* 상세 출처별 리스트 */}
+            {FUND_TYPES.filter((ft) => (fundBreakdown[ft.id] || 0) > 0)
+              .sort((a, b) => (fundBreakdown[b.id] || 0) - (fundBreakdown[a.id] || 0))
+              .map((ft) => {
                 const amt = fundBreakdown[ft.id] || 0;
-                if (amt === 0) return null;
+                const pct = Math.round((amt / totalExpense) * 100);
                 return (
-                  <View key={ft.id} style={styles.fundLegendItem}>
-                    <View style={[styles.fundLegendDot, { backgroundColor: ft.color }]} />
-                    <Ionicons name={ft.icon} size={12} color={ft.color} />
-                    <Text style={styles.fundLegendLabel}>{ft.name}</Text>
-                    <Text style={styles.fundLegendValue}>{formatMoney(amt)}</Text>
+                  <View key={ft.id} style={styles.fundDetailRow}>
+                    <View style={[styles.fundDetailDot, { backgroundColor: ft.color }]} />
+                    <Ionicons name={ft.icon} size={15} color={ft.color} />
+                    <Text style={styles.fundDetailName}>{ft.name}</Text>
+                    <View style={styles.fundDetailBarWrap}>
+                      <View style={[styles.fundDetailBar, { width: `${Math.max(pct, 3)}%`, backgroundColor: ft.color + 'CC' }]} />
+                    </View>
+                    <Text style={styles.fundDetailPct}>{pct}%</Text>
+                    <Text style={styles.fundDetailAmt}>{formatMoney(amt)}</Text>
                   </View>
                 );
               })}
-            </View>
           </View>
         )}
 
@@ -554,16 +560,26 @@ export default function InsightsScreen() {
             {expenseCatData.map(([cat, data]) => {
               const prevAmt = prevExpenseCatData[cat] || 0;
               const diff = prevAmt > 0 ? Math.round(((data.total - prevAmt) / prevAmt) * 100) : null;
+              const catColor = Colors.category[cat] || Colors.primary;
+              const pct = Math.round((data.total / totalExpense) * 100);
               return (
-                <View key={cat} style={styles.catRow}>
-                  <View style={[styles.catDot, { backgroundColor: Colors.category[cat] || Colors.primary }]} />
-                  <Ionicons name={ALL_CATEGORY_ICONS[cat] || 'ellipsis-horizontal-outline'} size={16} color={Colors.category[cat] || Colors.primary} />
-                  <Text style={styles.catName}>{ALL_CATEGORY_NAMES[cat] || cat}</Text>
-                  <Text style={styles.catAmount}>{formatMoney(data.total)}</Text>
-                  <Text style={styles.catPct}>{Math.round((data.total / totalExpense) * 100)}%</Text>
-                  {diff !== null && (
-                    <Ionicons name={diff > 0 ? 'caret-up' : 'caret-down'} size={10} color={diff > 0 ? Colors.expense : Colors.income} style={{ marginLeft: 2 }} />
-                  )}
+                <View key={cat} style={styles.catDetailBlock}>
+                  <View style={styles.catDetailHeader}>
+                    <View style={[styles.catDot, { backgroundColor: catColor }]} />
+                    <Ionicons name={ALL_CATEGORY_ICONS[cat] || 'ellipsis-horizontal-outline'} size={16} color={catColor} />
+                    <Text style={styles.catName}>{ALL_CATEGORY_NAMES[cat] || cat}</Text>
+                    {diff !== null && (
+                      <View style={[styles.catDiffBadge, { backgroundColor: diff > 0 ? Colors.expense + '12' : Colors.income + '12' }]}>
+                        <Ionicons name={diff > 0 ? 'caret-up' : 'caret-down'} size={9} color={diff > 0 ? Colors.expense : Colors.income} />
+                        <Text style={{ fontSize: 10, fontWeight: '700', color: diff > 0 ? Colors.expense : Colors.income }}>{Math.abs(diff)}%</Text>
+                      </View>
+                    )}
+                    <Text style={styles.catAmount}>{formatMoney(data.total)}</Text>
+                    <Text style={styles.catPct}>{pct}%</Text>
+                  </View>
+                  <View style={styles.catProgressWrap}>
+                    <View style={[styles.catProgressBar, { width: `${Math.max(pct, 2)}%`, backgroundColor: catColor }]} />
+                  </View>
                 </View>
               );
             })}
@@ -1015,11 +1031,13 @@ const getStyles = (Colors) => StyleSheet.create({
   fundBarRow: { flexDirection: 'row', height: 28, borderRadius: 14, overflow: 'hidden', marginBottom: 14, gap: 2 },
   fundBar: { justifyContent: 'center', alignItems: 'center' },
   fundBarText: { fontSize: 11, fontWeight: '700', color: '#FFFFFF' },
-  fundLegendRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'center' },
-  fundLegendItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  fundLegendDot: { width: 8, height: 8, borderRadius: 4 },
-  fundLegendLabel: { fontSize: 13, color: Colors.textGray },
-  fundLegendValue: { fontSize: 13, fontWeight: '600', color: Colors.textDark },
+  fundDetailRow: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: Colors.divider },
+  fundDetailDot: { width: 8, height: 8, borderRadius: 4 },
+  fundDetailName: { fontSize: 13, fontWeight: '600', color: Colors.textDark, width: 48 },
+  fundDetailBarWrap: { flex: 1, height: 8, backgroundColor: Colors.background, borderRadius: 4, overflow: 'hidden' },
+  fundDetailBar: { height: 8, borderRadius: 4 },
+  fundDetailPct: { fontSize: 12, fontWeight: '700', color: Colors.textGray, width: 32, textAlign: 'right' },
+  fundDetailAmt: { fontSize: 12, fontWeight: '600', color: Colors.textBlack, width: 80, textAlign: 'right' },
   chartCard: { backgroundColor: Colors.surface, borderRadius: 18, padding: 20, marginBottom: 12, borderWidth: 1, borderColor: Colors.border },
   barChartScroll: { marginBottom: 4 },
   barChartContainer: { flexDirection: 'row', alignItems: 'flex-end', gap: 4, paddingBottom: 4, minHeight: 110 },
@@ -1037,6 +1055,11 @@ const getStyles = (Colors) => StyleSheet.create({
   catName: { flex: 1, fontSize: 14, fontWeight: '600', color: Colors.textDark },
   catAmount: { fontSize: 14, fontWeight: '700', color: Colors.textBlack },
   catPct: { fontSize: 13, color: Colors.textGray, width: 40, textAlign: 'right' },
+  catDetailBlock: { marginBottom: 10, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: Colors.divider },
+  catDetailHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
+  catDiffBadge: { flexDirection: 'row', alignItems: 'center', gap: 2, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
+  catProgressWrap: { height: 6, backgroundColor: Colors.background, borderRadius: 3, overflow: 'hidden' },
+  catProgressBar: { height: 6, borderRadius: 3 },
   txIconSmall: { width: 32, height: 32, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
   emptyCard: { alignItems: 'center', paddingVertical: 50, backgroundColor: Colors.surface, borderRadius: 18, borderWidth: 1, borderColor: Colors.border, gap: 12 },
   emptyText: { fontSize: 14, color: Colors.textGray, textAlign: 'center' },
