@@ -15,7 +15,12 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.familywallet.app"
+      "bundleIdentifier": "com.familywallet.app",
+      "buildNumber": "1",
+      "infoPlist": {
+        "NSCameraUsageDescription": "프로필 사진을 촬영하기 위해 카메라 접근이 필요합니다.",
+        "NSPhotoLibraryUsageDescription": "프로필 사진을 선택하기 위해 사진 라이브러리 접근이 필요합니다."
+      }
     },
     "android": {
       "package": "com.familywallet.app",

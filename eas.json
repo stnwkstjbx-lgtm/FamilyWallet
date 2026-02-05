@@ -9,18 +9,27 @@
       "distribution": "internal",
       "android": {
         "buildType": "apk"
+      },
+      "ios": {
+        "simulator": true
       }
     },
     "preview": {
       "distribution": "internal",
       "android": {
         "buildType": "apk"
+      },
+      "ios": {
+        "distribution": "internal"
       }
     },
     "production": {
       "autoIncrement": true,
       "android": {
         "buildType": "app-bundle"
+      },
+      "ios": {
+        "distribution": "store"
       }
     }
   },
@@ -29,6 +38,9 @@
       "android": {
         "serviceAccountKeyPath": "./google-services.json",
         "track": "internal"
+      },
+      "ios": {
+        "ascAppId": ""
       }
     }
   }
