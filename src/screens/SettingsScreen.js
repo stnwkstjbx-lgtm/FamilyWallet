@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, StatusBar, TextInput,
   TouchableOpacity, Alert, Modal, Switch, Platform, ActivityIndicator, Share,
@@ -8,7 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../constants/ThemeContext';
 import { useAuth } from '../constants/AuthContext';
 import { useWallet } from '../constants/WalletContext';
-import { FUND_TYPES, FUND_TYPE_MAP, ASSET_FUND_TYPES, FUND_EXPENSE_CATEGORIES, ICON_OPTIONS, getFundCategories, registerCustomCategories } from '../constants/categories';
+import { FUND_TYPES, FUND_TYPE_MAP, ASSET_FUND_TYPES, FUND_EXPENSE_CATEGORIES, INCOME_CATEGORIES, ICON_OPTIONS, ALL_CATEGORY_NAMES, ALL_CATEGORY_ICONS, getFundCategories, registerCustomCategories } from '../constants/categories';
 import { formatAmountInput, parseAmount, validateAmount } from '../utils/format';
 import { transactionsToCSV, monthlySummaryCSV, shareCSV } from '../utils/exportCSV';
 import { db } from '../firebase/firebaseConfig';
@@ -53,6 +53,8 @@ export default function SettingsScreen() {
   const [fixedDay, setFixedDay] = useState('');
   const [fixedType, setFixedType] = useState('expense'); // 'expense' or 'income'
   const [fixedFundType, setFixedFundType] = useState('utility'); // 고정지출 출처
+  const [fixedCategory, setFixedCategory] = useState(null); // 고정 카테고리
+  const [fixedMemo, setFixedMemo] = useState(''); // 고정 메모
   const [showNameModal, setShowNameModal] = useState(false);
   const [newName, setNewName] = useState('');
   const [showAllowanceModal, setShowAllowanceModal] = useState(false);
@@ -133,26 +135,31 @@ export default function SettingsScreen() {
   };
 
   const resetFixedForm = () => {
-    setFixedName(''); setFixedAmount(''); setFixedDay(''); setFixedType('expense'); setFixedFundType('utility'); setEditingFixed(null); setShowFixedModal(false);
+    setFixedName(''); setFixedAmount(''); setFixedDay(''); setFixedType('expense'); setFixedFundType('utility'); setFixedCategory(null); setFixedMemo(''); setEditingFixed(null); setShowFixedModal(false);
   };
+
+  const fixedCatOptions = useMemo(() => {
+    if (fixedType === 'income') return INCOME_CATEGORIES;
+    return getFundCategories(fixedFundType, customFundCategories);
+  }, [fixedType, fixedFundType, customFundCategories]);
 
   const handleAddFixed = async () => {
     const numAmount = parseAmount(fixedAmount);
     const amtCheck = validateAmount(numAmount);
     if (!fixedName || !fixedAmount || !fixedDay) { showAlert('알림', '모든 항목을 입력해 주세요!'); return; }
     if (!amtCheck.valid) { showAlert('알림', amtCheck.message); return; }
+    if (!fixedCategory) { showAlert('알림', '카테고리를 선택해 주세요!'); return; }
     const day = parseInt(fixedDay);
     if (day < 1 || day > 31) { showAlert('알림', '1~31 사이 입력!'); return; }
 
     if (editingFixed) {
-      // 수정 모드
-      const updateData = { name: fixedName, amount: numAmount, day, type: fixedType };
+      const updateData = { name: fixedName, amount: numAmount, day, type: fixedType, category: fixedCategory, memo: fixedMemo };
       if (fixedType === 'expense') updateData.fundType = fixedFundType;
       await updateDoc(doc(db, 'wallets', currentWalletId, 'fixedExpenses', editingFixed.id), updateData);
       showAlert('수정 완료', `"${fixedName}" 항목이 수정되었습니다.`);
     } else {
       const docData = {
-        name: fixedName, amount: numAmount, day, type: fixedType,
+        name: fixedName, amount: numAmount, day, type: fixedType, category: fixedCategory, memo: fixedMemo,
         active: true, lastRecordedMonth: '', createdAt: new Date().toISOString(),
       };
       if (fixedType === 'expense') docData.fundType = fixedFundType;
@@ -168,6 +175,8 @@ export default function SettingsScreen() {
     setFixedDay(String(item.day));
     setFixedType(item.type || 'expense');
     setFixedFundType(item.fundType || 'utility');
+    setFixedCategory(item.category || null);
+    setFixedMemo(item.memo || '');
     setShowFixedModal(true);
   };
 
@@ -672,7 +681,7 @@ export default function SettingsScreen() {
                       </TouchableOpacity>
                       <View style={{ flex: 1 }}>
                         <Text style={styles.fixedName}>{item.name}</Text>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2, flexWrap: 'wrap' }}>
                           {isIncome ? (
                             <Text style={{ fontSize: 10, color: Colors.income }}>수입</Text>
                           ) : ftInfo ? (
@@ -681,8 +690,15 @@ export default function SettingsScreen() {
                               <Text style={{ fontSize: 10, fontWeight: '600', color: ftInfo.color }}>{ftInfo.name}</Text>
                             </View>
                           ) : null}
+                          {item.category && (
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2, backgroundColor: Colors.background, borderRadius: 4, paddingHorizontal: 5, paddingVertical: 1 }}>
+                              <Ionicons name={ALL_CATEGORY_ICONS[item.category] || 'ellipsis-horizontal-outline'} size={9} color={Colors.textGray} />
+                              <Text style={{ fontSize: 10, color: Colors.textGray }}>{ALL_CATEGORY_NAMES[item.category] || item.category}</Text>
+                            </View>
+                          )}
                           {!isActive && <Text style={{ fontSize: 10, color: Colors.textLight }}>· 비활성</Text>}
                         </View>
+                        {item.memo ? <Text style={{ fontSize: 10, color: Colors.textLight, marginTop: 2 }} numberOfLines={1}>{item.memo}</Text> : null}
                       </View>
                       <Text style={[styles.fixedAmt, { color: isIncome ? Colors.income : Colors.textBlack }]}>
                         {isIncome ? '+' : ''}{formatMoney(item.amount)}
@@ -866,19 +882,19 @@ export default function SettingsScreen() {
 
       {/* 고정 지출/수입 모달 */}
       <Modal visible={showFixedModal} transparent animationType="slide">
-        <View style={styles.modalOverlay}><View style={styles.modalContent}>
+        <View style={styles.modalOverlay}><ScrollView contentContainerStyle={{ flex: 1, justifyContent: 'flex-end' }}><View style={styles.modalContent}>
           <Text style={styles.modalTitle}>{editingFixed ? '고정 내역 수정' : '고정 내역 추가'}</Text>
           <View style={styles.fixedToggleRow}>
             <TouchableOpacity
               style={[styles.fixedToggleBtn, fixedType === 'expense' && { backgroundColor: Colors.expense + '15', borderColor: Colors.expense }]}
-              onPress={() => setFixedType('expense')}
+              onPress={() => { setFixedType('expense'); setFixedCategory(null); }}
             >
               <Ionicons name="arrow-up-circle" size={16} color={fixedType === 'expense' ? Colors.expense : Colors.textGray} />
               <Text style={[styles.fixedToggleText, fixedType === 'expense' && { color: Colors.expense }]}>지출</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.fixedToggleBtn, fixedType === 'income' && { backgroundColor: Colors.income + '15', borderColor: Colors.income }]}
-              onPress={() => setFixedType('income')}
+              onPress={() => { setFixedType('income'); setFixedCategory(null); }}
             >
               <Ionicons name="arrow-down-circle" size={16} color={fixedType === 'income' ? Colors.income : Colors.textGray} />
               <Text style={[styles.fixedToggleText, fixedType === 'income' && { color: Colors.income }]}>수입</Text>
@@ -890,7 +906,7 @@ export default function SettingsScreen() {
                 <TouchableOpacity
                   key={ft.id}
                   style={[styles.fixedFundChip, fixedFundType === ft.id && { backgroundColor: ft.color + '18', borderColor: ft.color }]}
-                  onPress={() => setFixedFundType(ft.id)}
+                  onPress={() => { setFixedFundType(ft.id); setFixedCategory(null); }}
                 >
                   <Ionicons name={ft.icon} size={12} color={fixedFundType === ft.id ? ft.color : Colors.textGray} />
                   <Text style={[styles.fixedFundChipText, fixedFundType === ft.id && { color: ft.color }]}>{ft.name}</Text>
@@ -901,12 +917,30 @@ export default function SettingsScreen() {
           <TextInput style={styles.modalInput} placeholder="항목명 (예: 월세, 통신비)" placeholderTextColor={Colors.textLight} value={fixedName} onChangeText={setFixedName} />
           <TextInput style={styles.modalInput} placeholder="금액" placeholderTextColor={Colors.textLight} keyboardType="numeric" value={fixedAmount} onChangeText={(t) => setFixedAmount(formatAmountInput(t))} />
           {fixedAmount ? <Text style={[styles.preview, { color: fixedType === 'income' ? Colors.income : Colors.expense }]}>매월 {fixedType === 'income' ? '+' : '-'}{parseAmount(fixedAmount).toLocaleString('ko-KR')}원</Text> : null}
+          {/* 카테고리 선택 */}
+          <Text style={{ fontSize: 13, fontWeight: '600', color: Colors.textDark, marginBottom: 6 }}>카테고리</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
+            <View style={{ flexDirection: 'row', gap: 6 }}>
+              {fixedCatOptions.map((cat) => {
+                const sel = fixedCategory === cat.id;
+                const catColor = sel ? (fixedType === 'income' ? Colors.income : (FUND_TYPE_MAP[fixedFundType]?.color || Colors.primary)) : Colors.textGray;
+                return (
+                  <TouchableOpacity key={cat.id} style={[styles.fixedCatChip, sel && { backgroundColor: catColor + '18', borderColor: catColor }]} onPress={() => setFixedCategory(cat.id)}>
+                    <Ionicons name={cat.icon} size={14} color={catColor} />
+                    <Text style={[styles.fixedCatChipText, sel && { color: catColor, fontWeight: '700' }]}>{cat.name}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </ScrollView>
+          {/* 메모 */}
+          <TextInput style={styles.modalInput} placeholder="메모 (선택)" placeholderTextColor={Colors.textLight} value={fixedMemo} onChangeText={setFixedMemo} />
           <View style={styles.dayRow}><Text style={styles.dayLabel}>매월</Text><TextInput style={styles.dayInput} placeholder="5" placeholderTextColor={Colors.textLight} keyboardType="numeric" maxLength={2} value={fixedDay} onChangeText={(t) => setFixedDay(t.replace(/[^0-9]/g, ''))} /><Text style={styles.dayLabel}>일에 자동 기록</Text></View>
           <View style={styles.modalBtns}>
             <TouchableOpacity style={styles.modalCancelBtn} onPress={resetFixedForm}><Text style={styles.modalCancelText}>취소</Text></TouchableOpacity>
             <TouchableOpacity style={styles.modalSaveBtn} onPress={handleAddFixed}><Text style={styles.modalSaveText}>{editingFixed ? '수정' : '추가'}</Text></TouchableOpacity>
           </View>
-        </View></View>
+        </View></ScrollView></View>
       </Modal>
 
       {/* 계정 삭제 모달 */}
@@ -1151,6 +1185,8 @@ const getStyles = (Colors) => StyleSheet.create({
   fixedSummaryRow: { flexDirection: 'row', gap: 10, marginBottom: 12 },
   fixedSummaryItem: { flex: 1, borderRadius: 12, padding: 12, alignItems: 'center' },
   fixedRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: Colors.divider, gap: 10 },
+  fixedCatChip: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 8, backgroundColor: Colors.background, borderWidth: 1.5, borderColor: Colors.border },
+  fixedCatChipText: { fontSize: 12, color: Colors.textGray },
   fixedDayBadge: { backgroundColor: Colors.primary + '20', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, alignItems: 'center' },
   fixedDayText: { fontSize: 13, fontWeight: 'bold', color: Colors.primary },
   fixedName: { fontSize: 15, fontWeight: '600', color: Colors.textBlack },

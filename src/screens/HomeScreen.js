@@ -99,7 +99,7 @@ export default function HomeScreen() {
               type: isIncome ? 'income' : 'expense',
               amount: data.amount,
               category: data.category || (isIncome ? 'salary' : 'housing'),
-              memo: `[자동] ${data.name}`,
+              memo: data.memo ? `[자동] ${data.name} - ${data.memo}` : `[자동] ${data.name}`,
               member: '자동 기록',
               userId: 'system',
               date: new Date(now.getFullYear(), now.getMonth(), effectiveDay).toISOString(),

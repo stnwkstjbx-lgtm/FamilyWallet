@@ -1,16 +1,16 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View, Text, StyleSheet, TextInput, TouchableOpacity,
-  ScrollView, StatusBar, Alert, KeyboardAvoidingView, Platform,
+  ScrollView, StatusBar, Alert, KeyboardAvoidingView, Platform, Modal,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../constants/ThemeContext';
 import { useAuth } from '../constants/AuthContext';
 import { useWallet } from '../constants/WalletContext';
-import { INCOME_CATEGORIES, FUND_TYPES, FUND_TYPE_MAP, getFundCategories, registerCustomCategories } from '../constants/categories';
+import { INCOME_CATEGORIES, FUND_TYPES, FUND_TYPE_MAP, ICON_OPTIONS, ALL_CATEGORY_NAMES, ALL_CATEGORY_ICONS, getFundCategories, registerCustomCategories } from '../constants/categories';
 import { db } from '../firebase/firebaseConfig';
-import { collection, addDoc } from 'firebase/firestore';
+import { collection, addDoc, doc, updateDoc } from 'firebase/firestore';
 import { formatAmountInput, parseAmount, validateAmount, validateFundType } from '../utils/format';
 
 const FIXED_EXPENSE_PRESETS = [
@@ -52,12 +52,27 @@ export default function AddScreen() {
   const [fixedDay, setFixedDay] = useState('');
   const [fixedType, setFixedType] = useState('expense'); // 'expense' or 'income'
   const [fixedFundType, setFixedFundType] = useState('utility'); // 고정지출 출처
+  const [fixedCategory, setFixedCategory] = useState(null);
+  const [fixedMemo, setFixedMemo] = useState('');
+
+  // 카테고리 인라인 관리 (관리자)
+  const [showCatActionModal, setShowCatActionModal] = useState(false);
+  const [actionCat, setActionCat] = useState(null); // 롱프레스 대상 카테고리
+  const [showCatAddModal, setShowCatAddModal] = useState(false);
+  const [showCatEditModal, setShowCatEditModal] = useState(false);
+  const [catEditName, setCatEditName] = useState('');
+  const [catEditIcon, setCatEditIcon] = useState('pricetag-outline');
 
   useEffect(() => { setSelectedCategory(null); }, [type]);
   useEffect(() => { setSelectedCategory(null); }, [fundType]);
 
   const customFundCats = currentWallet?.customFundCategories || {};
   registerCustomCategories(customFundCats);
+
+  const fixedCatOptions = useMemo(() => {
+    if (fixedType === 'income') return INCOME_CATEGORIES;
+    return getFundCategories(fixedFundType, customFundCats);
+  }, [fixedType, fixedFundType, customFundCats]);
   // 구 customCategories도 공금(shared)에 합산
   const legacyCustom = (currentWallet?.customCategories || []).map(c => ({ id: c.id, name: c.name, icon: c.icon }));
   const currentCategories = type === 'income'
@@ -65,6 +80,53 @@ export default function AddScreen() {
     : [...getFundCategories(fundType, customFundCats), ...(fundType === 'shared' ? legacyCustom : [])];
   const myWalletName = currentWallet?.members?.[user?.uid]?.name || userProfile?.name || user?.displayName || '미지정';
   const myAllowance = currentWallet?.members?.[user?.uid]?.allowance || 0;
+
+  // 카테고리 롱프레스 → 수정/삭제 (커스텀만)
+  const handleCatLongPress = (cat) => {
+    if (!isAdmin) return;
+    setActionCat({ ...cat, isCustom: cat.id.startsWith('custom_') });
+    setShowCatActionModal(true);
+  };
+
+  const handleDeleteCat = async () => {
+    if (!actionCat?.isCustom) return;
+    setShowCatActionModal(false);
+    const existing = customFundCats[fundType] || [];
+    await updateDoc(doc(db, 'wallets', currentWalletId), {
+      [`customFundCategories.${fundType}`]: existing.filter(c => c.id !== actionCat.id),
+    });
+    if (selectedCategory === actionCat.id) setSelectedCategory(null);
+  };
+
+  const handleStartEditCat = () => {
+    if (!actionCat) return;
+    setCatEditName(actionCat.name);
+    setCatEditIcon(actionCat.icon);
+    setShowCatActionModal(false);
+    setShowCatEditModal(true);
+  };
+
+  const handleSaveEditCat = async () => {
+    if (!catEditName.trim() || !actionCat) return;
+    const existing = customFundCats[fundType] || [];
+    const updated = existing.map(c => c.id === actionCat.id ? { ...c, name: catEditName.trim(), icon: catEditIcon } : c);
+    await updateDoc(doc(db, 'wallets', currentWalletId), {
+      [`customFundCategories.${fundType}`]: updated,
+    });
+    setShowCatEditModal(false); setCatEditName(''); setActionCat(null);
+  };
+
+  const handleAddNewCat = async () => {
+    if (!catEditName.trim()) { showAlert('알림', '이름을 입력해 주세요.'); return; }
+    const id = `custom_${Date.now()}`;
+    const newCat = { id, name: catEditName.trim(), icon: catEditIcon };
+    const existing = customFundCats[fundType] || [];
+    await updateDoc(doc(db, 'wallets', currentWalletId), {
+      [`customFundCategories.${fundType}`]: [...existing, newCat],
+    });
+    setShowCatAddModal(false); setCatEditName(''); setCatEditIcon('pricetag-outline');
+    setSelectedCategory(id);
+  };
 
   const handleSave = async () => {
     const numAmount = parseAmount(amount);
@@ -110,6 +172,7 @@ export default function AddScreen() {
     const amtCheck = validateAmount(numAmount);
     if (!fixedName.trim()) { showAlert('알림', '항목명을 입력해 주세요!'); return; }
     if (!amtCheck.valid) { showAlert('알림', amtCheck.message); return; }
+    if (!fixedCategory) { showAlert('알림', '카테고리를 선택해 주세요!'); return; }
     if (!fixedDay) { showAlert('알림', '날짜를 입력해 주세요!'); return; }
     const day = parseInt(fixedDay);
     if (day < 1 || day > 31) { showAlert('알림', '1~31 사이 날짜를 입력해 주세요!'); return; }
@@ -117,13 +180,13 @@ export default function AddScreen() {
     const label = fixedType === 'income' ? '수입' : '지출';
     try {
       const docData = {
-        name: fixedName.trim(), amount: numAmount, day, type: fixedType,
-        lastRecordedMonth: '', createdAt: new Date().toISOString(),
+        name: fixedName.trim(), amount: numAmount, day, type: fixedType, category: fixedCategory, memo: fixedMemo,
+        active: true, lastRecordedMonth: '', createdAt: new Date().toISOString(),
       };
       if (fixedType === 'expense') docData.fundType = fixedFundType;
       await addDoc(collection(db, 'wallets', currentWalletId, 'fixedExpenses'), docData);
       showAlert('등록 완료! ✅', `고정 ${label} "${fixedName.trim()}"이 등록되었습니다.\n매월 ${day}일에 자동 기록됩니다.`);
-      setAmount(''); setFixedName(''); setFixedDay(''); setFixedType('expense'); setFixedFundType('utility');
+      setAmount(''); setFixedName(''); setFixedDay(''); setFixedType('expense'); setFixedFundType('utility'); setFixedCategory(null); setFixedMemo('');
     } catch (error) {
       if (__DEV__) console.error('저장 실패:', error);
       showAlert('오류', '저장에 실패했습니다.');
@@ -235,7 +298,7 @@ export default function AddScreen() {
                   ) : null}
                 </View>
 
-                {/* 3. 항목명 (카테고리) */}
+                {/* 3. 항목명 */}
                 <View style={styles.inputCard}>
                   <Text style={styles.inputLabel}>항목명</Text>
                   <TextInput
@@ -245,24 +308,39 @@ export default function AddScreen() {
                     value={fixedName}
                     onChangeText={setFixedName}
                   />
-                  <View style={styles.fixedPresets}>
-                    {(fixedType === 'expense' ? FIXED_EXPENSE_PRESETS : FIXED_INCOME_PRESETS).map((preset) => {
-                      const activeColor = fixedType === 'expense' ? Colors.expense : Colors.income;
+                </View>
+
+                {/* 4. 카테고리 선택 */}
+                <View style={styles.inputCard}>
+                  <Text style={styles.inputLabel}>카테고리</Text>
+                  <View style={styles.categoryGrid}>
+                    {fixedCatOptions.map((cat) => {
+                      const isSelected = fixedCategory === cat.id;
+                      const catColor = Colors.category[cat.id] || (fixedType === 'income' ? Colors.income : (FUND_TYPE_MAP[fixedFundType]?.color || Colors.primary));
                       return (
                         <TouchableOpacity
-                          key={preset.name}
-                          style={[styles.fixedPresetChip, fixedName === preset.name && { backgroundColor: activeColor + '20', borderColor: activeColor }]}
-                          onPress={() => setFixedName(preset.name)}
+                          key={cat.id}
+                          style={[styles.categoryItem, isSelected && { backgroundColor: catColor + '18', borderColor: catColor }]}
+                          onPress={() => setFixedCategory(cat.id)}
                         >
-                          <Ionicons name={preset.icon} size={14} color={fixedName === preset.name ? activeColor : Colors.textGray} />
-                          <Text style={[styles.fixedPresetText, fixedName === preset.name && { color: activeColor }]}>{preset.name}</Text>
+                          <View style={[styles.categoryIconBox, { backgroundColor: catColor + (isSelected ? '30' : '12') }]}>
+                            <Ionicons name={cat.icon} size={22} color={catColor} />
+                          </View>
+                          <Text style={[styles.categoryName, isSelected && { color: catColor, fontWeight: 'bold' }]}>{cat.name}</Text>
+                          {isSelected && <View style={[styles.categoryCheck, { backgroundColor: catColor }]}><Ionicons name="checkmark" size={10} color="#FFF" /></View>}
                         </TouchableOpacity>
                       );
                     })}
                   </View>
                 </View>
 
-                {/* 4. 자동 기록일 (메모 역할) */}
+                {/* 5. 메모 */}
+                <View style={styles.inputCard}>
+                  <Text style={styles.inputLabel}>메모 (선택사항)</Text>
+                  <TextInput style={styles.memoInput} placeholder="예: 신한은행 자동이체" placeholderTextColor={Colors.textLight} value={fixedMemo} onChangeText={setFixedMemo} multiline />
+                </View>
+
+                {/* 6. 자동 기록일 */}
                 <View style={styles.inputCard}>
                   <Text style={styles.inputLabel}>자동 기록일</Text>
                   <View style={styles.fixedDayRow}>
@@ -281,7 +359,7 @@ export default function AddScreen() {
                   <View style={styles.fixedDayHint}>
                     <Ionicons name="information-circle-outline" size={14} color={Colors.textGray} />
                     <Text style={styles.fixedDayHintText}>
-                      해당 날짜에 {fixedType === 'income' ? '수입(급여 카테고리)' : `${FUND_TYPE_MAP[fixedFundType]?.name || '공과금'} 지출(주거 카테고리)`}로 자동 기록됩니다
+                      해당 날짜에 {fixedCategory ? (ALL_CATEGORY_NAMES[fixedCategory] || fixedCategory) : '선택한 카테고리'}로 자동 기록됩니다
                     </Text>
                   </View>
                 </View>
@@ -358,7 +436,10 @@ export default function AddScreen() {
 
                 {/* 카테고리 */}
                 <View style={styles.inputCard}>
-                  <Text style={styles.inputLabel}>{type === 'expense' ? '지출 카테고리' : '수입 카테고리'}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <Text style={styles.inputLabel}>{type === 'expense' ? '지출 카테고리' : '수입 카테고리'}</Text>
+                    {isAdmin && type === 'expense' && <Text style={{ fontSize: 10, color: Colors.textLight, marginBottom: 8 }}>길게 눌러 수정/삭제</Text>}
+                  </View>
                   <View style={styles.categoryGrid}>
                     {currentCategories.map((cat) => {
                       const isSelected = selectedCategory === cat.id;
@@ -368,6 +449,8 @@ export default function AddScreen() {
                           key={cat.id}
                           style={[styles.categoryItem, isSelected && { backgroundColor: catColor + '18', borderColor: catColor }]}
                           onPress={() => setSelectedCategory(cat.id)}
+                          onLongPress={() => handleCatLongPress(cat)}
+                          delayLongPress={500}
                         >
                           <View style={[styles.categoryIconBox, { backgroundColor: catColor + (isSelected ? '30' : '12') }]}>
                             <Ionicons name={cat.icon} size={22} color={catColor} />
@@ -377,6 +460,17 @@ export default function AddScreen() {
                         </TouchableOpacity>
                       );
                     })}
+                    {isAdmin && type === 'expense' && (
+                      <TouchableOpacity
+                        style={[styles.categoryItem, { borderStyle: 'dashed' }]}
+                        onPress={() => { setCatEditName(''); setCatEditIcon('pricetag-outline'); setShowCatAddModal(true); }}
+                      >
+                        <View style={[styles.categoryIconBox, { backgroundColor: Colors.primary + '12' }]}>
+                          <Ionicons name="add" size={22} color={Colors.primary} />
+                        </View>
+                        <Text style={[styles.categoryName, { color: Colors.primary }]}>추가</Text>
+                      </TouchableOpacity>
+                    )}
                   </View>
                 </View>
 
@@ -404,6 +498,77 @@ export default function AddScreen() {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* 카테고리 액션 시트 (롱프레스) */}
+      <Modal visible={showCatActionModal} transparent animationType="fade">
+        <TouchableOpacity style={styles.actionOverlay} activeOpacity={1} onPress={() => setShowCatActionModal(false)}>
+          <View style={styles.actionSheet}>
+            <View style={styles.actionHeader}>
+              {actionCat && <Ionicons name={actionCat.icon} size={20} color={Colors.primary} />}
+              <Text style={styles.actionTitle}>{actionCat?.name}</Text>
+              {!actionCat?.isCustom && <View style={styles.actionBasicBadge}><Text style={styles.actionBasicText}>기본</Text></View>}
+            </View>
+            {actionCat?.isCustom ? (
+              <>
+                <TouchableOpacity style={styles.actionBtn} onPress={handleStartEditCat}>
+                  <Ionicons name="create-outline" size={18} color={Colors.primary} />
+                  <Text style={[styles.actionBtnText, { color: Colors.primary }]}>이름/아이콘 수정</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.actionBtn} onPress={handleDeleteCat}>
+                  <Ionicons name="trash-outline" size={18} color={Colors.expense} />
+                  <Text style={[styles.actionBtnText, { color: Colors.expense }]}>삭제</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <Text style={{ fontSize: 13, color: Colors.textGray, textAlign: 'center', paddingVertical: 12 }}>기본 카테고리는 수정/삭제할 수 없어요</Text>
+            )}
+            <TouchableOpacity style={[styles.actionBtn, { borderTopWidth: 1, borderTopColor: Colors.divider }]} onPress={() => setShowCatActionModal(false)}>
+              <Text style={[styles.actionBtnText, { color: Colors.textGray }]}>닫기</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* 카테고리 추가 모달 */}
+      <Modal visible={showCatAddModal} transparent animationType="slide">
+        <View style={styles.actionOverlay}><View style={styles.catEditModal}>
+          <Text style={styles.catEditTitle}>카테고리 추가</Text>
+          <Text style={{ fontSize: 12, color: Colors.textGray, marginBottom: 10 }}>{FUND_TYPE_MAP[fundType]?.name || '공금'} 출처에 추가됩니다</Text>
+          <TextInput style={styles.catEditInput} placeholder="카테고리 이름" placeholderTextColor={Colors.textLight} value={catEditName} onChangeText={setCatEditName} maxLength={10} />
+          <Text style={{ fontSize: 12, color: Colors.textGray, marginBottom: 6 }}>아이콘</Text>
+          <View style={styles.catIconGrid}>
+            {ICON_OPTIONS.map((icon) => (
+              <TouchableOpacity key={icon} style={[styles.catIconOpt, catEditIcon === icon && { backgroundColor: Colors.primary + '20', borderColor: Colors.primary }]} onPress={() => setCatEditIcon(icon)}>
+                <Ionicons name={icon} size={18} color={catEditIcon === icon ? Colors.primary : Colors.textGray} />
+              </TouchableOpacity>
+            ))}
+          </View>
+          <View style={styles.catEditBtns}>
+            <TouchableOpacity style={styles.catEditCancelBtn} onPress={() => setShowCatAddModal(false)}><Text style={{ color: Colors.textGray, fontWeight: '600' }}>취소</Text></TouchableOpacity>
+            <TouchableOpacity style={[styles.catEditSaveBtn, { backgroundColor: Colors.primary }]} onPress={handleAddNewCat}><Text style={{ color: '#FFF', fontWeight: '700' }}>추가</Text></TouchableOpacity>
+          </View>
+        </View></View>
+      </Modal>
+
+      {/* 카테고리 수정 모달 */}
+      <Modal visible={showCatEditModal} transparent animationType="slide">
+        <View style={styles.actionOverlay}><View style={styles.catEditModal}>
+          <Text style={styles.catEditTitle}>카테고리 수정</Text>
+          <TextInput style={styles.catEditInput} placeholder="카테고리 이름" placeholderTextColor={Colors.textLight} value={catEditName} onChangeText={setCatEditName} maxLength={10} />
+          <Text style={{ fontSize: 12, color: Colors.textGray, marginBottom: 6 }}>아이콘</Text>
+          <View style={styles.catIconGrid}>
+            {ICON_OPTIONS.map((icon) => (
+              <TouchableOpacity key={icon} style={[styles.catIconOpt, catEditIcon === icon && { backgroundColor: Colors.primary + '20', borderColor: Colors.primary }]} onPress={() => setCatEditIcon(icon)}>
+                <Ionicons name={icon} size={18} color={catEditIcon === icon ? Colors.primary : Colors.textGray} />
+              </TouchableOpacity>
+            ))}
+          </View>
+          <View style={styles.catEditBtns}>
+            <TouchableOpacity style={styles.catEditCancelBtn} onPress={() => setShowCatEditModal(false)}><Text style={{ color: Colors.textGray, fontWeight: '600' }}>취소</Text></TouchableOpacity>
+            <TouchableOpacity style={[styles.catEditSaveBtn, { backgroundColor: Colors.primary }]} onPress={handleSaveEditCat}><Text style={{ color: '#FFF', fontWeight: '700' }}>저장</Text></TouchableOpacity>
+          </View>
+        </View></View>
+      </Modal>
     </View>
   );
 }
@@ -467,4 +632,22 @@ const getStyles = (Colors) => StyleSheet.create({
   fixedDayInput: { width: 64, backgroundColor: Colors.background, borderRadius: 12, padding: 12, fontSize: 22, fontWeight: '800', color: Colors.textBlack, textAlign: 'center', borderWidth: 1.5, borderColor: Colors.border },
   fixedDayHint: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 14, paddingTop: 12, borderTopWidth: 1, borderTopColor: Colors.divider },
   fixedDayHintText: { fontSize: 12, color: Colors.textGray, flex: 1, lineHeight: 17 },
+  // 카테고리 액션시트
+  actionOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center', padding: 30 },
+  actionSheet: { backgroundColor: Colors.surface, borderRadius: 20, padding: 20, width: '100%', maxWidth: 320 },
+  actionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: Colors.divider },
+  actionTitle: { fontSize: 17, fontWeight: '700', color: Colors.textBlack, flex: 1 },
+  actionBasicBadge: { backgroundColor: Colors.background, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
+  actionBasicText: { fontSize: 10, fontWeight: '600', color: Colors.textGray },
+  actionBtn: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 14 },
+  actionBtnText: { fontSize: 15, fontWeight: '600' },
+  // 카테고리 편집 모달
+  catEditModal: { backgroundColor: Colors.surface, borderRadius: 20, padding: 24, width: '100%', maxWidth: 340 },
+  catEditTitle: { fontSize: 18, fontWeight: '700', color: Colors.textBlack, marginBottom: 12 },
+  catEditInput: { backgroundColor: Colors.background, borderRadius: 12, padding: 14, fontSize: 16, color: Colors.textBlack, marginBottom: 12 },
+  catIconGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 16 },
+  catIconOpt: { width: 38, height: 38, borderRadius: 10, borderWidth: 1.5, borderColor: Colors.border, justifyContent: 'center', alignItems: 'center' },
+  catEditBtns: { flexDirection: 'row', gap: 10 },
+  catEditCancelBtn: { flex: 1, backgroundColor: Colors.background, borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
+  catEditSaveBtn: { flex: 1, borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
 });
