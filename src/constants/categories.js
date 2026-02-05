@@ -103,3 +103,30 @@ INCOME_CATEGORIES.forEach((c) => { ALL_CATEGORY_ICONS[c.id] = c.icon; });
 Object.values(FUND_EXPENSE_CATEGORIES).forEach((cats) => {
   cats.forEach((c) => { if (!ALL_CATEGORY_ICONS[c.id]) ALL_CATEGORY_ICONS[c.id] = c.icon; });
 });
+
+// ===== 아이콘 선택지 =====
+export const ICON_OPTIONS = [
+  'pricetag-outline','cart-outline','car-outline','gift-outline','leaf-outline','paw-outline',
+  'fitness-outline','musical-notes-outline','airplane-outline','build-outline','camera-outline',
+  'color-palette-outline','restaurant-outline','flash-outline','flame-outline','water-outline',
+  'wifi-outline','medkit-outline','construct-outline','trending-up-outline','lock-closed-outline',
+  'phone-portrait-outline','business-outline','layers-outline','bar-chart-outline','pie-chart-outline',
+];
+
+// ===== 출처별 카테고리 병합 (기본 + 커스텀) =====
+export function getFundCategories(fundType, customFundCategories) {
+  const base = FUND_EXPENSE_CATEGORIES[fundType] || EXPENSE_CATEGORIES;
+  const custom = customFundCategories?.[fundType] || [];
+  return [...base, ...custom];
+}
+
+// ===== 커스텀 카테고리를 ALL_CATEGORY 맵에 등록 =====
+export function registerCustomCategories(customFundCategories) {
+  if (!customFundCategories) return;
+  Object.values(customFundCategories).forEach((cats) => {
+    (cats || []).forEach((c) => {
+      if (c.id && c.name) ALL_CATEGORY_NAMES[c.id] = c.name;
+      if (c.id && c.icon) ALL_CATEGORY_ICONS[c.id] = c.icon;
+    });
+  });
+}

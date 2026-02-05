@@ -90,6 +90,7 @@ export default function HomeScreen() {
         let expCount = 0, incCount = 0;
         for (const fixedDoc of fixedSnapshot.docs) {
           const data = fixedDoc.data();
+          if (data.active === false) continue;
           if (data.lastRecordedMonth === currentMonth) continue;
           const effectiveDay = Math.min(data.day || 1, lastDay);
           if (today >= effectiveDay) {
@@ -97,7 +98,7 @@ export default function HomeScreen() {
             const txData = {
               type: isIncome ? 'income' : 'expense',
               amount: data.amount,
-              category: isIncome ? 'salary' : 'housing',
+              category: data.category || (isIncome ? 'salary' : 'housing'),
               memo: `[자동] ${data.name}`,
               member: '자동 기록',
               userId: 'system',

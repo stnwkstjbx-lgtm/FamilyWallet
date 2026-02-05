@@ -7,7 +7,7 @@ import { Calendar, LocaleConfig } from 'react-native-calendars';
 import { useTheme } from '../constants/ThemeContext';
 import { useAuth } from '../constants/AuthContext';
 import { useWallet } from '../constants/WalletContext';
-import { ALL_CATEGORY_NAMES, ALL_CATEGORY_ICONS, EXPENSE_CATEGORIES, FUND_TYPES, FUND_TYPE_MAP, FUND_EXPENSE_CATEGORIES } from '../constants/categories';
+import { ALL_CATEGORY_NAMES, ALL_CATEGORY_ICONS, EXPENSE_CATEGORIES, FUND_TYPES, FUND_TYPE_MAP, FUND_EXPENSE_CATEGORIES, registerCustomCategories } from '../constants/categories';
 import { formatAmountInput, parseAmount, validateAmount } from '../utils/format';
 import { db } from '../firebase/firebaseConfig';
 import { collection, onSnapshot, query, where, orderBy, addDoc } from 'firebase/firestore';
@@ -37,6 +37,7 @@ export default function InsightsScreen() {
     requestAllowance, respondToAllowanceRequest,
   } = useWallet();
   const styles = getStyles(Colors);
+  registerCustomCategories(currentWallet?.customFundCategories);
 
   const [tab, setTab] = useState('stats'); // 'stats' | 'calendar' | 'allowance'
   const [allTransactions, setAllTransactions] = useState([]);
