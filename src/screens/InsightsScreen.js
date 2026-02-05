@@ -163,27 +163,50 @@ export default function InsightsScreen() {
   // 저축률
   const savingsRate = totalIncome > 0 ? Math.round(((totalIncome - totalExpense) / totalIncome) * 100) : 0;
 
-  // 주중 vs 주말 소비 (총액 비교)
-  const weekdayWeekend = useMemo(() => {
-    let weekday = 0, weekend = 0, weekdayCount = 0, weekendCount = 0;
-    monthly.filter((t) => t.type === 'expense').forEach((t) => {
-      const [y, m, d] = (t.date || '').split('-').map(Number);
-      if (!d) return;
-      const dow = new Date(y, m - 1, d).getDay();
-      if (dow === 0 || dow === 6) { weekend += t.amount || 0; weekendCount++; }
-      else { weekday += t.amount || 0; weekdayCount++; }
-    });
-    const total = weekday + weekend;
-    return { weekday, weekend, total, weekdayCount, weekendCount, weekdayPct: total > 0 ? Math.round((weekday / total) * 100) : 0, weekendPct: total > 0 ? Math.round((weekend / total) * 100) : 0 };
-  }, [monthly]);
-
-  // 지출 건수 & 건당 평균
+  // 지출 건수 & 건당 평균 & 일평균
   const expenseTxStats = useMemo(() => {
     const txs = monthly.filter((t) => t.type === 'expense');
     const count = txs.length;
     const avg = count > 0 ? Math.round(totalExpense / count) : 0;
-    return { count, avg };
-  }, [monthly, totalExpense]);
+    // 일평균: 지출이 있는 날 기준
+    const expenseDays = new Set();
+    txs.forEach((t) => { if (t.date) expenseDays.add(t.date); });
+    const dailyAvg = expenseDays.size > 0 ? Math.round(totalExpense / expenseDays.size) : 0;
+    // 경과일 기준 일평균
+    const [y, m] = yearMonth.split('-').map(Number);
+    const daysTotal = new Date(y, m, 0).getDate();
+    const now = new Date();
+    const isCurrentMonth = now.getFullYear() === y && now.getMonth() + 1 === m;
+    const daysElapsed = isCurrentMonth ? now.getDate() : daysTotal;
+    const calendarDailyAvg = daysElapsed > 0 ? Math.round(totalExpense / daysElapsed) : 0;
+    return { count, avg, dailyAvg, calendarDailyAvg, expenseDayCount: expenseDays.size, daysElapsed };
+  }, [monthly, totalExpense, yearMonth]);
+
+  // 최대 지출 건 TOP 5
+  const topExpenses = useMemo(() => {
+    return monthly
+      .filter((t) => t.type === 'expense')
+      .sort((a, b) => (b.amount || 0) - (a.amount || 0))
+      .slice(0, 5);
+  }, [monthly]);
+
+  // 카테고리별 전월 대비 변동 (증가/감소 순)
+  const catChanges = useMemo(() => {
+    const changes = [];
+    expenseCatData.forEach(([cat, data]) => {
+      const prevAmt = prevExpenseCatData[cat] || 0;
+      const diff = data.total - prevAmt;
+      const diffPct = prevAmt > 0 ? Math.round((diff / prevAmt) * 100) : (data.total > 0 ? 100 : 0);
+      changes.push({ cat, current: data.total, prev: prevAmt, diff, diffPct, isNew: prevAmt === 0 && data.total > 0 });
+    });
+    // 전월에 있었지만 이번달에 없는 카테고리
+    Object.entries(prevExpenseCatData).forEach(([cat, prevAmt]) => {
+      if (!expenseCatData.find(([c]) => c === cat) && prevAmt > 0) {
+        changes.push({ cat, current: 0, prev: prevAmt, diff: -prevAmt, diffPct: -100, isGone: true });
+      }
+    });
+    return changes.sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff));
+  }, [expenseCatData, prevExpenseCatData]);
 
   // 예산 소진 속도
   const burnRate = useMemo(() => {
@@ -527,12 +550,11 @@ export default function InsightsScreen() {
           )}
         </View>
 
-        {/* 소비 패턴 분석 */}
+        {/* 소비 요약 */}
         {totalExpense > 0 && (
           <View style={styles.chartCard}>
-            <Text style={styles.sectionTitle}>소비 패턴</Text>
-            {/* 지출 건수 & 건당 평균 */}
-            <View style={{ flexDirection: 'row', gap: 10, marginBottom: 14 }}>
+            <Text style={styles.sectionTitle}>소비 요약</Text>
+            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 14 }}>
               <View style={[styles.patternCard, { backgroundColor: Colors.primary + '08' }]}>
                 <Ionicons name="receipt-outline" size={16} color={Colors.primary} />
                 <Text style={{ fontSize: 11, color: Colors.textGray, marginTop: 4 }}>지출 건수</Text>
@@ -541,45 +563,32 @@ export default function InsightsScreen() {
               <View style={[styles.patternCard, { backgroundColor: '#6C63FF' + '08' }]}>
                 <Ionicons name="calculator-outline" size={16} color="#6C63FF" />
                 <Text style={{ fontSize: 11, color: Colors.textGray, marginTop: 4 }}>건당 평균</Text>
-                <Text style={{ fontSize: 15, fontWeight: '800', color: '#6C63FF' }}>{formatMoney(expenseTxStats.avg)}</Text>
+                <Text style={{ fontSize: 14, fontWeight: '800', color: '#6C63FF' }}>{formatMoney(expenseTxStats.avg)}</Text>
+              </View>
+              <View style={[styles.patternCard, { backgroundColor: Colors.expense + '08' }]}>
+                <Ionicons name="today-outline" size={16} color={Colors.expense} />
+                <Text style={{ fontSize: 11, color: Colors.textGray, marginTop: 4 }}>일평균</Text>
+                <Text style={{ fontSize: 14, fontWeight: '800', color: Colors.expense }}>{formatMoney(expenseTxStats.calendarDailyAvg)}</Text>
               </View>
             </View>
-            {/* 주중 vs 주말 비교 */}
-            {(weekdayWeekend.weekday > 0 || weekdayWeekend.weekend > 0) && (
-              <View style={{ marginBottom: 14 }}>
-                <Text style={{ fontSize: 13, fontWeight: '700', color: Colors.textDark, marginBottom: 10 }}>주중 vs 주말</Text>
-                <View style={styles.fundBarRow}>
-                  {weekdayWeekend.weekday > 0 && <View style={[styles.fundBar, { flex: weekdayWeekend.weekdayPct, backgroundColor: Colors.primary }]}><Text style={styles.fundBarText}>주중 {weekdayWeekend.weekdayPct}%</Text></View>}
-                  {weekdayWeekend.weekend > 0 && <View style={[styles.fundBar, { flex: weekdayWeekend.weekendPct, backgroundColor: Colors.expense }]}><Text style={styles.fundBarText}>주말 {weekdayWeekend.weekendPct}%</Text></View>}
-                </View>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 }}>
-                  <View>
-                    <Text style={{ fontSize: 11, color: Colors.textGray }}>주중 ({weekdayWeekend.weekdayCount}건)</Text>
-                    <Text style={{ fontSize: 14, fontWeight: '700', color: Colors.primary }}>{formatMoney(weekdayWeekend.weekday)}</Text>
-                  </View>
-                  <View style={{ alignItems: 'flex-end' }}>
-                    <Text style={{ fontSize: 11, color: Colors.textGray }}>주말 ({weekdayWeekend.weekendCount}건)</Text>
-                    <Text style={{ fontSize: 14, fontWeight: '700', color: Colors.expense }}>{formatMoney(weekdayWeekend.weekend)}</Text>
+            {/* 지출 집중도 - 상위 카테고리가 전체의 몇 %인지 */}
+            {expenseCatData.length >= 2 && (() => {
+              const top2Total = expenseCatData.slice(0, 2).reduce((s, [, d]) => s + d.total, 0);
+              const top2Pct = Math.round((top2Total / totalExpense) * 100);
+              return (
+                <View style={{ backgroundColor: top2Pct > 70 ? '#E67E22' + '08' : Colors.background, borderRadius: 10, padding: 12 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Ionicons name="analytics-outline" size={16} color={top2Pct > 70 ? '#E67E22' : Colors.primary} />
+                    <Text style={{ fontSize: 13, color: Colors.textDark, flex: 1 }}>
+                      <Text style={{ fontWeight: '700' }}>{ALL_CATEGORY_NAMES[expenseCatData[0][0]] || expenseCatData[0][0]}</Text>
+                      {expenseCatData.length >= 2 && <Text>, {ALL_CATEGORY_NAMES[expenseCatData[1][0]] || expenseCatData[1][0]}</Text>}
+                      <Text> 비중이 </Text>
+                      <Text style={{ fontWeight: '800', color: top2Pct > 70 ? '#E67E22' : Colors.primary }}>{top2Pct}%</Text>
+                    </Text>
                   </View>
                 </View>
-              </View>
-            )}
-            {/* TOP 지출일 */}
-            {topSpendDays.length > 0 && (
-              <View>
-                <Text style={{ fontSize: 13, fontWeight: '700', color: Colors.textDark, marginBottom: 8 }}>최다 지출일</Text>
-                {topSpendDays.map((item, idx) => (
-                  <View key={item.day} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8, borderBottomWidth: idx < topSpendDays.length - 1 ? 1 : 0, borderBottomColor: Colors.divider }}>
-                    <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: idx === 0 ? Colors.expense + '20' : Colors.background, justifyContent: 'center', alignItems: 'center', marginRight: 10 }}>
-                      <Text style={{ fontSize: 11, fontWeight: '800', color: idx === 0 ? Colors.expense : Colors.textGray }}>{idx + 1}</Text>
-                    </View>
-                    <Text style={{ fontSize: 14, fontWeight: '600', color: Colors.textDark }}>{item.day}일 ({item.dow})</Text>
-                    <View style={{ flex: 1 }} />
-                    <Text style={{ fontSize: 14, fontWeight: '700', color: Colors.expense }}>{formatMoney(item.amount)}</Text>
-                  </View>
-                ))}
-              </View>
-            )}
+              );
+            })()}
           </View>
         )}
 
@@ -677,6 +686,22 @@ export default function InsightsScreen() {
                 })}
               </View>
             </ScrollView>
+            {/* TOP 지출일 */}
+            {topSpendDays.length > 0 && (
+              <View style={{ marginTop: 14, paddingTop: 14, borderTopWidth: 1, borderTopColor: Colors.divider }}>
+                <Text style={{ fontSize: 13, fontWeight: '700', color: Colors.textDark, marginBottom: 8 }}>최다 지출일</Text>
+                {topSpendDays.map((item, idx) => (
+                  <View key={item.day} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6 }}>
+                    <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: idx === 0 ? Colors.expense + '20' : Colors.background, justifyContent: 'center', alignItems: 'center', marginRight: 10 }}>
+                      <Text style={{ fontSize: 11, fontWeight: '800', color: idx === 0 ? Colors.expense : Colors.textGray }}>{idx + 1}</Text>
+                    </View>
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: Colors.textDark }}>{item.day}일 ({item.dow})</Text>
+                    <View style={{ flex: 1 }} />
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: Colors.expense }}>{formatMoney(item.amount)}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
           </View>
         )}
 
@@ -724,6 +749,67 @@ export default function InsightsScreen() {
                   <View style={styles.catProgressWrap}>
                     <View style={[styles.catProgressBar, { width: `${Math.max(pct, 2)}%`, backgroundColor: catColor }]} />
                   </View>
+                </View>
+              );
+            })}
+          </View>
+        )}
+
+        {/* TOP 지출 건 */}
+        {topExpenses.length > 0 && (
+          <View style={styles.chartCard}>
+            <Text style={styles.sectionTitle}>큰 지출 TOP {Math.min(topExpenses.length, 5)}</Text>
+            {topExpenses.map((tx, idx) => {
+              const catColor = Colors.category[tx.category] || Colors.primary;
+              const pct = totalExpense > 0 ? Math.round((tx.amount / totalExpense) * 100) : 0;
+              return (
+                <View key={tx.id} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderBottomWidth: idx < topExpenses.length - 1 ? 1 : 0, borderBottomColor: Colors.divider }}>
+                  <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: idx < 3 ? Colors.expense + '15' : Colors.background, justifyContent: 'center', alignItems: 'center', marginRight: 10 }}>
+                    <Text style={{ fontSize: 11, fontWeight: '800', color: idx < 3 ? Colors.expense : Colors.textGray }}>{idx + 1}</Text>
+                  </View>
+                  <View style={[styles.txIconSmall, { backgroundColor: catColor + '15', marginRight: 8 }]}>
+                    <Ionicons name={ALL_CATEGORY_ICONS[tx.category] || 'ellipsis-horizontal-outline'} size={14} color={catColor} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: Colors.textDark }} numberOfLines={1}>{tx.memo || ALL_CATEGORY_NAMES[tx.category] || '기타'}</Text>
+                    <Text style={{ fontSize: 11, color: Colors.textGray }}>{(tx.date || '').slice(5).replace('-', '/')} · {ALL_CATEGORY_NAMES[tx.category] || '기타'}</Text>
+                  </View>
+                  <View style={{ alignItems: 'flex-end' }}>
+                    <Text style={{ fontSize: 14, fontWeight: '700', color: Colors.expense }}>{formatMoney(tx.amount)}</Text>
+                    <Text style={{ fontSize: 10, color: Colors.textGray }}>{pct}%</Text>
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+        )}
+
+        {/* 카테고리 변동 분석 (전월 대비) */}
+        {catChanges.length > 0 && catChanges.some((c) => c.prev > 0 || c.isNew) && (
+          <View style={styles.chartCard}>
+            <Text style={styles.sectionTitle}>전월 대비 변동</Text>
+            {catChanges.filter((c) => c.diff !== 0).slice(0, 6).map((item) => {
+              const catColor = Colors.category[item.cat] || Colors.primary;
+              const isUp = item.diff > 0;
+              return (
+                <View key={item.cat} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: Colors.divider }}>
+                  <Ionicons name={ALL_CATEGORY_ICONS[item.cat] || 'ellipsis-horizontal-outline'} size={15} color={catColor} />
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: Colors.textDark, marginLeft: 8, flex: 1 }}>{ALL_CATEGORY_NAMES[item.cat] || item.cat}</Text>
+                  {item.isNew ? (
+                    <View style={{ backgroundColor: Colors.primary + '15', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 }}>
+                      <Text style={{ fontSize: 11, fontWeight: '700', color: Colors.primary }}>신규</Text>
+                    </View>
+                  ) : item.isGone ? (
+                    <View style={{ backgroundColor: Colors.income + '15', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 }}>
+                      <Text style={{ fontSize: 11, fontWeight: '700', color: Colors.income }}>소멸</Text>
+                    </View>
+                  ) : (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: isUp ? Colors.expense + '10' : Colors.income + '10', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 }}>
+                      <Ionicons name={isUp ? 'arrow-up' : 'arrow-down'} size={11} color={isUp ? Colors.expense : Colors.income} />
+                      <Text style={{ fontSize: 11, fontWeight: '700', color: isUp ? Colors.expense : Colors.income }}>{formatMoney(Math.abs(item.diff))}</Text>
+                      <Text style={{ fontSize: 10, color: isUp ? Colors.expense : Colors.income }}>({Math.abs(item.diffPct)}%)</Text>
+                    </View>
+                  )}
                 </View>
               );
             })}
