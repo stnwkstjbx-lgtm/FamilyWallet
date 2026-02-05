@@ -242,6 +242,20 @@ export default function HomeScreen() {
   const myAllowanceRemain = myAllowance - myPersonalExpense;
   const myAllowancePct = myAllowance > 0 ? Math.min(Math.round((myPersonalExpense / myAllowance) * 100), 100) : 0;
 
+  const myWalletName = currentWallet?.members?.[user?.uid]?.name || userProfile?.name || '';
+  const customCats = useMemo(() => (currentWallet?.customCategories || []).map(c => ({ id: c.id, name: c.name, icon: c.icon })), [currentWallet?.customCategories]);
+  const allCatNames = useMemo(() => {
+    const map = { ...ALL_CATEGORY_NAMES };
+    customCats.forEach(c => { map[c.id] = c.name; });
+    return map;
+  }, [customCats]);
+  const allCatIcons = useMemo(() => {
+    const map = { ...ALL_CATEGORY_ICONS };
+    customCats.forEach(c => { map[c.id] = c.icon; });
+    return map;
+  }, [customCats]);
+  const quickCategories = quickType === 'expense' ? [...EXPENSE_CATEGORIES, ...customCats] : INCOME_CATEGORIES;
+
   // ★ 필터링된 트랜잭션
   const filteredTransactions = useMemo(() => {
     return transactions.filter((t) => {
@@ -282,20 +296,6 @@ export default function HomeScreen() {
     if (diff < 7) return `${diff}일 전`;
     return `${date.getMonth() + 1}/${date.getDate()}`;
   };
-
-  const myWalletName = currentWallet?.members?.[user?.uid]?.name || userProfile?.name || '';
-  const customCats = useMemo(() => (currentWallet?.customCategories || []).map(c => ({ id: c.id, name: c.name, icon: c.icon })), [currentWallet?.customCategories]);
-  const allCatNames = useMemo(() => {
-    const map = { ...ALL_CATEGORY_NAMES };
-    customCats.forEach(c => { map[c.id] = c.name; });
-    return map;
-  }, [customCats]);
-  const allCatIcons = useMemo(() => {
-    const map = { ...ALL_CATEGORY_ICONS };
-    customCats.forEach(c => { map[c.id] = c.icon; });
-    return map;
-  }, [customCats]);
-  const quickCategories = quickType === 'expense' ? [...EXPENSE_CATEGORIES, ...customCats] : INCOME_CATEGORIES;
 
   // ★ 시간대별 인사말
   const greeting = useMemo(() => {
