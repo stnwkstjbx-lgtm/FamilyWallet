@@ -284,7 +284,7 @@ export default function HomeScreen() {
   };
 
   const myWalletName = currentWallet?.members?.[user?.uid]?.name || userProfile?.name || '';
-  const customCats = (currentWallet?.customCategories || []).map(c => ({ id: c.id, name: c.name, icon: c.icon }));
+  const customCats = useMemo(() => (currentWallet?.customCategories || []).map(c => ({ id: c.id, name: c.name, icon: c.icon })), [currentWallet?.customCategories]);
   const allCatNames = useMemo(() => {
     const map = { ...ALL_CATEGORY_NAMES };
     customCats.forEach(c => { map[c.id] = c.name; });
@@ -1089,19 +1089,22 @@ export default function HomeScreen() {
                 {/* 카테고리 */}
                 <Text style={styles.inputLabel}>카테고리</Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryScroll}>
-                  {quickCategories.map((cat) => (
+                  {quickCategories.map((cat) => {
+                    const catColor = Colors.category[cat.id] || Colors.primary;
+                    return (
                     <TouchableOpacity
                       key={cat.id}
                       style={[
                         styles.categoryChip,
-                        quickCategory === cat.id && { backgroundColor: Colors.category[cat.id], borderColor: Colors.category[cat.id] }
+                        quickCategory === cat.id && { backgroundColor: catColor, borderColor: catColor }
                       ]}
                       onPress={() => setQuickCategory(cat.id)}
                     >
-                      <Ionicons name={cat.icon} size={16} color={quickCategory === cat.id ? '#fff' : Colors.category[cat.id]} />
+                      <Ionicons name={cat.icon} size={16} color={quickCategory === cat.id ? '#fff' : catColor} />
                       <Text style={[styles.categoryChipText, quickCategory === cat.id && { color: '#fff' }]}>{cat.name}</Text>
                     </TouchableOpacity>
-                  ))}
+                    );
+                  })}
                 </ScrollView>
 
                 {/* 메모 */}
