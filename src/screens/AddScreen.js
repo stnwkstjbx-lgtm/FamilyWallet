@@ -58,6 +58,7 @@ export default function AddScreen() {
   // 카테고리 인라인 관리 (관리자)
   const [showCatActionModal, setShowCatActionModal] = useState(false);
   const [actionCat, setActionCat] = useState(null); // 롱프레스 대상 카테고리
+  const [actionFundType, setActionFundType] = useState(null); // 어느 출처 컨텍스트에서 실행됐는지
   const [showCatAddModal, setShowCatAddModal] = useState(false);
   const [showCatEditModal, setShowCatEditModal] = useState(false);
   const [catEditName, setCatEditName] = useState('');
@@ -82,20 +83,22 @@ export default function AddScreen() {
   const myAllowance = currentWallet?.members?.[user?.uid]?.allowance || 0;
 
   // 카테고리 롱프레스 → 수정/삭제 (커스텀만)
-  const handleCatLongPress = (cat) => {
+  const handleCatLongPress = (cat, ctxFundType) => {
     if (!isAdmin) return;
     setActionCat({ ...cat, isCustom: cat.id.startsWith('custom_') });
+    setActionFundType(ctxFundType);
     setShowCatActionModal(true);
   };
 
   const handleDeleteCat = async () => {
-    if (!actionCat?.isCustom) return;
+    if (!actionCat?.isCustom || !actionFundType) return;
     setShowCatActionModal(false);
-    const existing = customFundCats[fundType] || [];
+    const existing = customFundCats[actionFundType] || [];
     await updateDoc(doc(db, 'wallets', currentWalletId), {
-      [`customFundCategories.${fundType}`]: existing.filter(c => c.id !== actionCat.id),
+      [`customFundCategories.${actionFundType}`]: existing.filter(c => c.id !== actionCat.id),
     });
     if (selectedCategory === actionCat.id) setSelectedCategory(null);
+    if (fixedCategory === actionCat.id) setFixedCategory(null);
   };
 
   const handleStartEditCat = () => {
@@ -107,25 +110,28 @@ export default function AddScreen() {
   };
 
   const handleSaveEditCat = async () => {
-    if (!catEditName.trim() || !actionCat) return;
-    const existing = customFundCats[fundType] || [];
+    if (!catEditName.trim() || !actionCat || !actionFundType) return;
+    const existing = customFundCats[actionFundType] || [];
     const updated = existing.map(c => c.id === actionCat.id ? { ...c, name: catEditName.trim(), icon: catEditIcon } : c);
     await updateDoc(doc(db, 'wallets', currentWalletId), {
-      [`customFundCategories.${fundType}`]: updated,
+      [`customFundCategories.${actionFundType}`]: updated,
     });
     setShowCatEditModal(false); setCatEditName(''); setActionCat(null);
   };
 
   const handleAddNewCat = async () => {
     if (!catEditName.trim()) { showAlert('알림', '이름을 입력해 주세요.'); return; }
+    if (!actionFundType) return;
     const id = `custom_${Date.now()}`;
     const newCat = { id, name: catEditName.trim(), icon: catEditIcon };
-    const existing = customFundCats[fundType] || [];
+    const existing = customFundCats[actionFundType] || [];
     await updateDoc(doc(db, 'wallets', currentWalletId), {
-      [`customFundCategories.${fundType}`]: [...existing, newCat],
+      [`customFundCategories.${actionFundType}`]: [...existing, newCat],
     });
     setShowCatAddModal(false); setCatEditName(''); setCatEditIcon('pricetag-outline');
-    setSelectedCategory(id);
+    // 해당 컨텍스트의 선택 카테고리 업데이트
+    if (type === 'fixed') setFixedCategory(id);
+    else setSelectedCategory(id);
   };
 
   const handleSave = async () => {
@@ -312,7 +318,10 @@ export default function AddScreen() {
 
                 {/* 4. 카테고리 선택 */}
                 <View style={styles.inputCard}>
-                  <Text style={styles.inputLabel}>카테고리</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <Text style={styles.inputLabel}>카테고리</Text>
+                    {isAdmin && fixedType === 'expense' && <Text style={{ fontSize: 10, color: Colors.textLight, marginBottom: 8 }}>길게 눌러 수정/삭제</Text>}
+                  </View>
                   <View style={styles.categoryGrid}>
                     {fixedCatOptions.map((cat) => {
                       const isSelected = fixedCategory === cat.id;
@@ -322,6 +331,8 @@ export default function AddScreen() {
                           key={cat.id}
                           style={[styles.categoryItem, isSelected && { backgroundColor: catColor + '18', borderColor: catColor }]}
                           onPress={() => setFixedCategory(cat.id)}
+                          onLongPress={() => fixedType === 'expense' && handleCatLongPress(cat, fixedFundType)}
+                          delayLongPress={500}
                         >
                           <View style={[styles.categoryIconBox, { backgroundColor: catColor + (isSelected ? '30' : '12') }]}>
                             <Ionicons name={cat.icon} size={22} color={catColor} />
@@ -331,6 +342,17 @@ export default function AddScreen() {
                         </TouchableOpacity>
                       );
                     })}
+                    {isAdmin && fixedType === 'expense' && (
+                      <TouchableOpacity
+                        style={[styles.categoryItem, { borderStyle: 'dashed' }]}
+                        onPress={() => { setActionFundType(fixedFundType); setCatEditName(''); setCatEditIcon('pricetag-outline'); setShowCatAddModal(true); }}
+                      >
+                        <View style={[styles.categoryIconBox, { backgroundColor: Colors.primary + '12' }]}>
+                          <Ionicons name="add" size={22} color={Colors.primary} />
+                        </View>
+                        <Text style={[styles.categoryName, { color: Colors.primary }]}>추가</Text>
+                      </TouchableOpacity>
+                    )}
                   </View>
                 </View>
 
@@ -449,7 +471,7 @@ export default function AddScreen() {
                           key={cat.id}
                           style={[styles.categoryItem, isSelected && { backgroundColor: catColor + '18', borderColor: catColor }]}
                           onPress={() => setSelectedCategory(cat.id)}
-                          onLongPress={() => handleCatLongPress(cat)}
+                          onLongPress={() => handleCatLongPress(cat, fundType)}
                           delayLongPress={500}
                         >
                           <View style={[styles.categoryIconBox, { backgroundColor: catColor + (isSelected ? '30' : '12') }]}>
@@ -463,7 +485,7 @@ export default function AddScreen() {
                     {isAdmin && type === 'expense' && (
                       <TouchableOpacity
                         style={[styles.categoryItem, { borderStyle: 'dashed' }]}
-                        onPress={() => { setCatEditName(''); setCatEditIcon('pricetag-outline'); setShowCatAddModal(true); }}
+                        onPress={() => { setActionFundType(fundType); setCatEditName(''); setCatEditIcon('pricetag-outline'); setShowCatAddModal(true); }}
                       >
                         <View style={[styles.categoryIconBox, { backgroundColor: Colors.primary + '12' }]}>
                           <Ionicons name="add" size={22} color={Colors.primary} />
@@ -533,7 +555,7 @@ export default function AddScreen() {
       <Modal visible={showCatAddModal} transparent animationType="slide">
         <View style={styles.actionOverlay}><View style={styles.catEditModal}>
           <Text style={styles.catEditTitle}>카테고리 추가</Text>
-          <Text style={{ fontSize: 12, color: Colors.textGray, marginBottom: 10 }}>{FUND_TYPE_MAP[fundType]?.name || '공금'} 출처에 추가됩니다</Text>
+          <Text style={{ fontSize: 12, color: Colors.textGray, marginBottom: 10 }}>{FUND_TYPE_MAP[actionFundType]?.name || '공금'} 출처에 추가됩니다</Text>
           <TextInput style={styles.catEditInput} placeholder="카테고리 이름" placeholderTextColor={Colors.textLight} value={catEditName} onChangeText={setCatEditName} maxLength={10} />
           <Text style={{ fontSize: 12, color: Colors.textGray, marginBottom: 6 }}>아이콘</Text>
           <View style={styles.catIconGrid}>
