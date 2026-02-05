@@ -38,7 +38,7 @@ export default function InsightsScreen() {
   } = useWallet();
   const styles = getStyles(Colors);
 
-  const [tab, setTab] = useState('stats'); // 'stats' | 'allowance' | 'asset'
+  const [tab, setTab] = useState('stats'); // 'stats' | 'asset'
   const [allTransactions, setAllTransactions] = useState([]);
 
   // 월 네비게이션
@@ -353,16 +353,22 @@ export default function InsightsScreen() {
     emergency: Math.round(((accumulatedFunds?.emergency || 0) / totalAsset) * 100),
   } : { savings: 0, investment: 0, emergency: 0 };
 
-  // 자산 분배 추천
+  // 자산 분배 추천 (강화)
   const getAssetAdvice = () => {
     if (totalAsset === 0) return { icon: 'bulb-outline', title: '자산 관리를 시작해보세요', desc: '예적금, 투자, 비상금으로 자산을 분류하여 기록하면\n맞춤 분석을 제공합니다.' };
     const advices = [];
-    if (assetRatios.emergency < 10 && totalAsset > 0) advices.push('비상금 비율이 낮아요. 총 자산의 10-20%는 비상금으로 유지하는 것이 안전합니다.');
-    if (assetRatios.investment > 70) advices.push('투자 비중이 높아요. 리스크 분산을 위해 예적금과 비상금 비율을 높이는 것을 고려하세요.');
-    if (assetRatios.savings > 80) advices.push('예적금 비중이 높아요. 일부를 투자로 전환하면 수익률을 높일 수 있습니다.');
-    if (assetRatios.investment === 0 && totalAsset > 500000) advices.push('투자를 아직 시작하지 않았어요. 소액부터 분산투자를 시작해보는 것은 어떨까요?');
-    if (advices.length === 0) advices.push('자산 배분이 균형 잡혀 있어요! 꾸준히 유지하세요.');
-    return { icon: 'analytics-outline', title: '자산 분배 조언', desc: advices.join('\n\n') };
+    // 비상금 분석
+    if (assetRatios.emergency < 10) advices.push({ type: 'warning', text: `비상금이 ${assetRatios.emergency}%로 부족합니다. 최소 10-20% (${formatMoney(Math.round(totalAsset * 0.15) - (accumulatedFunds?.emergency || 0))} 추가 필요)를 비상금으로 확보하세요.` });
+    else if (assetRatios.emergency > 30) advices.push({ type: 'info', text: `비상금 비율이 ${assetRatios.emergency}%로 높아요. 초과분은 예적금이나 투자로 이동시키면 더 나은 수익을 기대할 수 있습니다.` });
+    // 투자 분석
+    if (assetRatios.investment > 70) advices.push({ type: 'warning', text: `투자 비중이 ${assetRatios.investment}%로 높아요. 시장 변동 리스크가 큽니다. 예적금과 비상금 비율을 높여 안정성을 확보하세요.` });
+    else if (assetRatios.investment === 0 && totalAsset >= 500000) advices.push({ type: 'tip', text: '투자를 시작하지 않았어요. 자산의 30% 정도를 ETF나 적립식 펀드로 시작해보는 것을 추천합니다.' });
+    else if (assetRatios.investment > 0 && assetRatios.investment < 20 && totalAsset >= 1000000) advices.push({ type: 'tip', text: `투자 비율이 ${assetRatios.investment}%로 보수적입니다. 장기적으로 30-40%까지 늘리면 자산 증식에 유리합니다.` });
+    // 예적금 분석
+    if (assetRatios.savings > 80) advices.push({ type: 'info', text: `예적금 비중이 ${assetRatios.savings}%로 매우 높아요. 안전하지만 물가 상승률을 고려하면 일부를 투자로 전환하는 것이 좋습니다.` });
+    // 균형 잡힘
+    if (advices.length === 0) advices.push({ type: 'success', text: '자산 배분이 균형 잡혀 있어요! 현재 비율을 꾸준히 유지하세요.' });
+    return advices;
   };
 
   const getInvestmentInsight = () => {
@@ -370,20 +376,115 @@ export default function InsightsScreen() {
       ? Math.round(assetHistory.reduce((s, [, d]) => s + d.savings + d.investment + d.emergency, 0) / assetHistory.length)
       : 0;
     const insights = [];
-    if (monthlyAvg > 0) insights.push(`월 평균 ${formatMoney(monthlyAvg)}을 자산에 투입하고 있어요.`);
+    if (monthlyAvg > 0) insights.push({ icon: 'calculator-outline', text: `월 평균 ${formatMoney(monthlyAvg)}을 자산에 투입하고 있어요.` });
     if (assetHistory.length >= 3) {
       const recent3 = assetHistory.slice(-3);
       const recent3Total = recent3.reduce((s, [, d]) => s + d.savings + d.investment + d.emergency, 0);
       const recent3Avg = Math.round(recent3Total / 3);
-      if (recent3Avg > monthlyAvg) insights.push('최근 3개월 투입 금액이 증가 추세입니다. 좋은 흐름이에요!');
-      else if (recent3Avg < monthlyAvg * 0.7) insights.push('최근 3개월 투입 금액이 감소했어요. 자산 증식 속도가 느려지고 있습니다.');
+      if (recent3Avg > monthlyAvg) insights.push({ icon: 'arrow-up-circle-outline', text: '최근 3개월 투입 금액이 증가 추세입니다.' });
+      else if (recent3Avg < monthlyAvg * 0.7) insights.push({ icon: 'arrow-down-circle-outline', text: '최근 3개월 투입 금액이 감소했어요. 자산 증식 속도가 느려지고 있습니다.' });
     }
-    const investAmt = accumulatedFunds?.investment || 0;
-    if (investAmt > 0) {
-      insights.push(`현재 투자 자산 ${formatMoney(investAmt)}. 분산투자와 정기적인 리밸런싱을 추천합니다.`);
-    }
-    if (insights.length === 0) insights.push('자산 데이터가 쌓이면 더 정확한 인사이트를 제공합니다.');
+    // 목표 달성 예측
+    ASSET_FUND_TYPES.forEach((ft) => {
+      const goal = fundGoals[ft] || 0;
+      const current = accumulatedFunds?.[ft] || 0;
+      if (goal > 0 && current < goal) {
+        const recentContribs = assetHistory.slice(-6).map(([, d]) => d[ft] || 0);
+        const avgContrib = recentContribs.length > 0 ? recentContribs.reduce((s, v) => s + v, 0) / recentContribs.length : 0;
+        if (avgContrib > 0) {
+          const monthsLeft = Math.ceil((goal - current) / avgContrib);
+          insights.push({ icon: 'flag-outline', text: `${FUND_TYPE_MAP[ft].name} 목표까지 약 ${monthsLeft}개월 (월 ${formatMoney(Math.round(avgContrib))} 투입 기준)` });
+        }
+      }
+    });
+    if (insights.length === 0) insights.push({ icon: 'time-outline', text: '자산 데이터가 쌓이면 더 정확한 인사이트를 제공합니다.' });
     return insights;
+  };
+
+  // 투자처 추천
+  const getInvestmentRecommendations = () => {
+    const recommendations = [];
+    const investAmt = accumulatedFunds?.investment || 0;
+    const savingsAmt = accumulatedFunds?.savings || 0;
+    const emergencyAmt = accumulatedFunds?.emergency || 0;
+
+    // 자산 규모별 추천
+    if (totalAsset < 1000000) {
+      recommendations.push({
+        title: '비상금 우선 확보',
+        icon: 'shield-checkmark',
+        color: FUND_TYPE_MAP.emergency.color,
+        desc: '월 생활비의 3개월분을 비상금으로 먼저 모으세요.',
+        products: ['CMA 통장 (수시입출금+이자)', '파킹통장 (높은 이율)', '자유적금'],
+      });
+    }
+
+    if (totalAsset >= 500000) {
+      recommendations.push({
+        title: '안정형 저축',
+        icon: 'wallet',
+        color: FUND_TYPE_MAP.savings.color,
+        desc: '원금 보장으로 안정적인 수익을 추구합니다.',
+        products: ['정기적금 (연 3-4%)', '청년우대적금 (정부지원)', '주택청약종합저축'],
+      });
+    }
+
+    if (totalAsset >= 1000000) {
+      recommendations.push({
+        title: '분산 투자 시작',
+        icon: 'pie-chart',
+        color: FUND_TYPE_MAP.investment.color,
+        desc: '소액부터 다양한 자산에 분산하여 리스크를 줄입니다.',
+        products: ['국내 ETF (KODEX 200 등)', '해외 ETF (S&P500, 나스닥)', '적립식 펀드'],
+      });
+    }
+
+    if (totalAsset >= 3000000 && investAmt > 0) {
+      recommendations.push({
+        title: '성장형 투자',
+        icon: 'rocket',
+        color: '#E74C3C',
+        desc: '장기 투자로 높은 수익률을 목표로 합니다.',
+        products: ['글로벌 ETF 포트폴리오', '테마형 ETF (AI, 반도체 등)', 'ISA 계좌 활용 (세제 혜택)'],
+      });
+    }
+
+    if (recommendations.length === 0) {
+      recommendations.push({
+        title: '자산 관리 시작하기',
+        icon: 'bulb',
+        color: Colors.primary,
+        desc: '먼저 자산을 기록하고 현황을 파악해보세요.',
+        products: ['지출 시 예적금/투자/비상금으로 분류', '월 저축 목표 설정', '자동이체로 강제 저축'],
+      });
+    }
+
+    return recommendations;
+  };
+
+  // 자산 건강도 점수
+  const getAssetHealthScore = () => {
+    if (totalAsset === 0) return { score: 0, grade: '-', color: Colors.textLight };
+    let score = 50; // 기본
+    // 비상금 비율 (10-20%가 이상적)
+    if (assetRatios.emergency >= 10 && assetRatios.emergency <= 20) score += 15;
+    else if (assetRatios.emergency >= 5) score += 8;
+    // 투자 비율 (30-40%가 이상적)
+    if (assetRatios.investment >= 20 && assetRatios.investment <= 50) score += 15;
+    else if (assetRatios.investment >= 10) score += 8;
+    // 예적금 비율 (40-50%가 이상적)
+    if (assetRatios.savings >= 30 && assetRatios.savings <= 60) score += 10;
+    else if (assetRatios.savings >= 20) score += 5;
+    // 꾸준함 보너스 (3개월 이상 기록)
+    if (assetHistory.length >= 3) score += 5;
+    if (assetHistory.length >= 6) score += 5;
+    score = Math.min(100, score);
+    let grade, color;
+    if (score >= 85) { grade = 'A'; color = Colors.income; }
+    else if (score >= 70) { grade = 'B'; color = '#2980B9'; }
+    else if (score >= 55) { grade = 'C'; color = '#E67E22'; }
+    else { grade = 'D'; color = Colors.expense; }
+    return { score, grade, color };
   };
 
   // ═══════════════════════════════════
@@ -580,132 +681,74 @@ export default function InsightsScreen() {
           </View>
         )}
 
-        {expenseCatData.length === 0 && incomeCatData.length === 0 && (
-          <View style={styles.emptyCard}>
-            <Ionicons name="bar-chart-outline" size={36} color={Colors.textLight} />
-            <Text style={styles.emptyText}>이번 달 데이터가 없어요</Text>
-          </View>
-        )}
-      </>
-    );
-  };
-
-  // ═══════════════════════════════════
-  // 렌더링 - 용돈 탭
-  // ═══════════════════════════════════
-  const renderAllowance = () => {
-    const hasAllowance = myAllowance > 0;
-    return (
-      <>
-        {/* 내 용돈 요약 */}
-        <View style={styles.chartCard}>
-          <Text style={styles.sectionTitle}>내 용돈 현황</Text>
-          {hasAllowance ? (
-            <>
-              <View style={styles.allowSummaryRow}>
-                <View style={styles.allowSummaryItem}>
-                  <Text style={styles.allowSummaryLabel}>배분</Text>
-                  <Text style={[styles.allowSummaryVal, { color: Colors.primary }]}>{formatMoney(myAllowance)}</Text>
-                </View>
-                <View style={styles.allowSummaryItem}>
-                  <Text style={styles.allowSummaryLabel}>사용</Text>
-                  <Text style={[styles.allowSummaryVal, { color: Colors.expense }]}>{formatMoney(allowanceReport.current.spent)}</Text>
-                </View>
-                <View style={styles.allowSummaryItem}>
-                  <Text style={styles.allowSummaryLabel}>잔액</Text>
-                  <Text style={[styles.allowSummaryVal, { color: allowanceReport.current.saved >= 0 ? Colors.income : Colors.expense }]}>{formatMoney(allowanceReport.current.saved)}</Text>
-                </View>
-              </View>
-              <View style={styles.allowBar}>
-                <View style={[styles.allowBarFill, { width: `${Math.min(100, 100 - remainingPercent)}%`, backgroundColor: remainingPercent > 50 ? Colors.income : remainingPercent > 20 ? Colors.warning : Colors.expense }]} />
-              </View>
-              <Text style={[styles.allowBarText2, { color: Colors.textGray }]}>{remainingPercent}% 남음</Text>
-            </>
-          ) : (
-            <View style={{ alignItems: 'center', paddingVertical: 16 }}>
-              <Ionicons name="wallet-outline" size={36} color={Colors.textLight} />
-              <Text style={[styles.emptyText, { marginTop: 8 }]}>용돈이 설정되지 않았어요</Text>
-              {!myPendingRequest && (
-                <TouchableOpacity style={[styles.requestBtn, { backgroundColor: Colors.primary, marginTop: 12 }]} onPress={() => setShowRequestModal(true)}>
-                  <Ionicons name="hand-right-outline" size={16} color="#FFF" />
-                  <Text style={{ color: '#FFF', fontWeight: '700', marginLeft: 6 }}>용돈 요청하기</Text>
-                </TouchableOpacity>
-              )}
-              {myPendingRequest && (
-                <View style={[styles.pendingBadge, { backgroundColor: '#FFD93D20' }]}>
-                  <Ionicons name="time-outline" size={16} color="#E6A800" />
-                  <Text style={{ color: '#E6A800', fontWeight: '600', marginLeft: 6 }}>요청 대기 중 ({parseInt(myPendingRequest.amount).toLocaleString()}원)</Text>
-                </View>
-              )}
-            </View>
-          )}
-        </View>
-
-        {/* 저축 리포트 */}
-        {hasAllowance && (
+        {/* 용돈 간략 현황 */}
+        {myAllowance > 0 && (
           <View style={styles.chartCard}>
-            <Text style={styles.sectionTitle}>저축 리포트</Text>
-            <View style={{ gap: 10 }}>
-              <View style={[styles.reportItem, { backgroundColor: Colors.background }]}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-                  <Ionicons name="calendar-outline" size={16} color="#6C63FF" />
-                  <Text style={{ fontSize: 12, color: Colors.textGray }}>지난달 절약</Text>
-                </View>
-                <Text style={{ fontSize: 20, fontWeight: '800', color: allowanceReport.last.saved >= 0 ? Colors.income : Colors.expense }}>
-                  {allowanceReport.last.saved >= 0 ? '+' : ''}{formatMoney(allowanceReport.last.saved)}
-                </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Ionicons name="wallet" size={18} color={Colors.primary} />
+                <Text style={styles.sectionTitle}>용돈 현황</Text>
               </View>
-              <View style={[styles.reportItem, { backgroundColor: Colors.background }]}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-                  <Ionicons name="trending-up" size={16} color={Colors.income} />
-                  <Text style={{ fontSize: 12, color: Colors.textGray }}>월 평균 절약</Text>
-                </View>
-                <Text style={{ fontSize: 20, fontWeight: '800', color: Colors.textBlack }}>{formatMoney(allowanceReport.avgSaved)}</Text>
-              </View>
-              <View style={[styles.reportItem, { backgroundColor: Colors.income + '12', borderWidth: 1, borderColor: Colors.income + '30' }]}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <View>
-                    <Text style={{ fontSize: 12, color: Colors.textGray }}>이 추세로 1년 모으면</Text>
-                    <Text style={{ fontSize: 22, fontWeight: '800', color: Colors.income, marginTop: 4 }}>{formatMoney(allowanceReport.projectedYearly)}</Text>
-                  </View>
-                  <Text style={{ fontSize: 28 }}>🎉</Text>
-                </View>
-              </View>
-            </View>
-          </View>
-        )}
-
-        {/* 이번 달 사용 내역 */}
-        {hasAllowance && (
-          <View style={styles.chartCard}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-              <Text style={styles.sectionTitle}>이번 달 사용 내역</Text>
               <TouchableOpacity style={[styles.addBtnSmall, { backgroundColor: Colors.primary }]} onPress={() => setShowAddModal(true)}>
-                <Ionicons name="add" size={18} color="#FFF" />
-                <Text style={{ color: '#FFF', fontWeight: '700', fontSize: 12 }}>추가</Text>
+                <Ionicons name="add" size={16} color="#FFF" />
+                <Text style={{ color: '#FFF', fontWeight: '700', fontSize: 11 }}>사용 추가</Text>
               </TouchableOpacity>
             </View>
-            {allowanceReport.currentMonthTxs.length === 0 ? (
-              <View style={{ alignItems: 'center', paddingVertical: 24 }}>
-                <Ionicons name="receipt-outline" size={36} color={Colors.textLight} />
-                <Text style={[styles.emptyText, { marginTop: 8 }]}>사용 내역이 없어요</Text>
+            <View style={styles.allowSummaryRow}>
+              <View style={styles.allowSummaryItem}>
+                <Text style={styles.allowSummaryLabel}>배분</Text>
+                <Text style={[styles.allowSummaryVal, { color: Colors.primary }]}>{formatMoney(myAllowance)}</Text>
               </View>
-            ) : allowanceReport.currentMonthTxs.map((tx) => {
-              const catColor = Colors.category?.[tx.category] || Colors.primary;
-              return (
-                <View key={tx.id} style={styles.catRow}>
-                  <View style={[styles.txIconSmall, { backgroundColor: catColor + '15' }]}>
-                    <Ionicons name={ALL_CATEGORY_ICONS[tx.category] || 'ellipsis-horizontal-outline'} size={16} color={catColor} />
-                  </View>
-                  <Text style={styles.catName}>{tx.memo || ALL_CATEGORY_NAMES[tx.category] || '기타'}</Text>
-                  <Text style={[styles.catAmount, { color: Colors.expense }]}>-{formatMoney(tx.amount)}</Text>
-                </View>
-              );
-            })}
+              <View style={styles.allowSummaryItem}>
+                <Text style={styles.allowSummaryLabel}>사용</Text>
+                <Text style={[styles.allowSummaryVal, { color: Colors.expense }]}>{formatMoney(allowanceReport.current.spent)}</Text>
+              </View>
+              <View style={styles.allowSummaryItem}>
+                <Text style={styles.allowSummaryLabel}>잔액</Text>
+                <Text style={[styles.allowSummaryVal, { color: allowanceReport.current.saved >= 0 ? Colors.income : Colors.expense }]}>{formatMoney(allowanceReport.current.saved)}</Text>
+              </View>
+            </View>
+            <View style={styles.allowBar}>
+              <View style={[styles.allowBarFill, { width: `${Math.min(100, 100 - remainingPercent)}%`, backgroundColor: remainingPercent > 50 ? Colors.income : remainingPercent > 20 ? Colors.warning : Colors.expense }]} />
+            </View>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
+              <Text style={{ fontSize: 11, color: Colors.textLight }}>{remainingPercent}% 남음</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                <Ionicons name="lock-closed" size={10} color={Colors.textLight} />
+                <Text style={{ fontSize: 10, color: Colors.textLight }}>나만 보기</Text>
+              </View>
+            </View>
+          </View>
+        )}
+        {!myAllowance && !myPendingRequest && (
+          <View style={styles.chartCard}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+              <Ionicons name="wallet-outline" size={18} color={Colors.textGray} />
+              <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>용돈</Text>
+            </View>
+            <View style={{ alignItems: 'center', paddingVertical: 12 }}>
+              <Text style={styles.emptyText}>용돈이 설정되지 않았어요</Text>
+              <TouchableOpacity style={[styles.requestBtn, { backgroundColor: Colors.primary, marginTop: 10 }]} onPress={() => setShowRequestModal(true)}>
+                <Ionicons name="hand-right-outline" size={14} color="#FFF" />
+                <Text style={{ color: '#FFF', fontWeight: '700', fontSize: 12, marginLeft: 6 }}>용돈 요청하기</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+        {!myAllowance && myPendingRequest && (
+          <View style={styles.chartCard}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+              <Ionicons name="wallet-outline" size={18} color={Colors.textGray} />
+              <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>용돈</Text>
+            </View>
+            <View style={[styles.pendingBadge, { backgroundColor: '#FFD93D20', alignSelf: 'center' }]}>
+              <Ionicons name="time-outline" size={16} color="#E6A800" />
+              <Text style={{ color: '#E6A800', fontWeight: '600', marginLeft: 6 }}>요청 대기 중 ({parseInt(myPendingRequest.amount).toLocaleString()}원)</Text>
+            </View>
           </View>
         )}
 
-        {/* 관리자: 대기 요청 */}
+        {/* 관리자: 용돈 요청 */}
         {isAdmin && pendingRequests.length > 0 && (
           <View style={styles.chartCard}>
             <Text style={styles.sectionTitle}>용돈 요청 ({pendingRequests.length})</Text>
@@ -735,10 +778,12 @@ export default function InsightsScreen() {
           </View>
         )}
 
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 12 }}>
-          <Ionicons name="lock-closed" size={14} color={Colors.textLight} />
-          <Text style={{ fontSize: 12, color: Colors.textLight }}>용돈 사용 내역은 나만 볼 수 있어요</Text>
-        </View>
+        {expenseCatData.length === 0 && incomeCatData.length === 0 && (
+          <View style={styles.emptyCard}>
+            <Ionicons name="bar-chart-outline" size={36} color={Colors.textLight} />
+            <Text style={styles.emptyText}>이번 달 데이터가 없어요</Text>
+          </View>
+        )}
       </>
     );
   };
@@ -747,14 +792,28 @@ export default function InsightsScreen() {
   // 렌더링 - 자산 탭
   // ═══════════════════════════════════
   const renderAsset = () => {
-    const advice = getAssetAdvice();
+    const advices = getAssetAdvice();
     const insights = getInvestmentInsight();
+    const recommendations = getInvestmentRecommendations();
+    const health = getAssetHealthScore();
+    const adviceIcons = { warning: 'warning-outline', info: 'information-circle-outline', tip: 'bulb-outline', success: 'checkmark-circle-outline' };
+    const adviceColors = { warning: Colors.expense, info: '#2980B9', tip: '#E67E22', success: Colors.income };
     return (
       <>
-        {/* 누적 자산 요약 */}
+        {/* 자산 건강도 + 총액 */}
         <View style={styles.chartCard}>
-          <Text style={styles.sectionTitle}>누적 자산 현황</Text>
-          <Text style={[styles.totalAssetAmount, { color: Colors.primary }]}>{formatMoney(totalAsset)}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <View>
+              <Text style={styles.sectionTitle}>누적 자산 현황</Text>
+              <Text style={[styles.totalAssetAmount, { color: Colors.primary, textAlign: 'left', marginTop: 0 }]}>{formatMoney(totalAsset)}</Text>
+            </View>
+            {totalAsset > 0 && (
+              <View style={[styles.healthBadge, { backgroundColor: health.color + '15', borderColor: health.color + '30' }]}>
+                <Text style={[styles.healthGrade, { color: health.color }]}>{health.grade}</Text>
+                <Text style={[styles.healthScore, { color: health.color }]}>{health.score}점</Text>
+              </View>
+            )}
+          </View>
 
           {totalAsset > 0 && (
             <>
@@ -785,7 +844,9 @@ export default function InsightsScreen() {
                           {formatMoney(amt)}{goal > 0 ? ` / ${formatMoney(goal)}` : ''}
                         </Text>
                       </View>
-                      {goal > 0 && <Text style={[styles.assetPct, { color: pct >= 100 ? Colors.income : info.color }]}>{pct}%</Text>}
+                      <Text style={[styles.assetPct, { color: goal > 0 && pct >= 100 ? Colors.income : info.color }]}>
+                        {assetRatios[ft]}%
+                      </Text>
                     </View>
                     {goal > 0 && (
                       <View style={styles.assetGoalBar}>
@@ -795,6 +856,35 @@ export default function InsightsScreen() {
                   </View>
                 );
               })}
+
+              {/* 현재 vs 추천 비율 비교 */}
+              <View style={[styles.ratioCompareBox, { backgroundColor: Colors.background }]}>
+                <Text style={{ fontSize: 13, fontWeight: '700', color: Colors.textBlack, marginBottom: 10 }}>내 배분 vs 추천 배분</Text>
+                {[
+                  { ft: 'savings', name: '예적금', recommended: '40-50%' },
+                  { ft: 'investment', name: '투자', recommended: '30-40%' },
+                  { ft: 'emergency', name: '비상금', recommended: '10-20%' },
+                ].map((item) => {
+                  const myPct = assetRatios[item.ft];
+                  const info = FUND_TYPE_MAP[item.ft];
+                  return (
+                    <View key={item.ft} style={{ marginBottom: 10 }}>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <View style={[styles.assetLegendDot, { backgroundColor: info.color }]} />
+                          <Text style={{ fontSize: 13, fontWeight: '600', color: Colors.textBlack }}>{item.name}</Text>
+                        </View>
+                        <Text style={{ fontSize: 12, color: Colors.textGray }}>
+                          <Text style={{ fontWeight: '700', color: info.color }}>{myPct}%</Text> / {item.recommended}
+                        </Text>
+                      </View>
+                      <View style={{ flexDirection: 'row', height: 6, borderRadius: 3, backgroundColor: Colors.border, overflow: 'hidden' }}>
+                        <View style={{ width: `${Math.min(myPct, 100)}%`, backgroundColor: info.color, borderRadius: 3 }} />
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
             </>
           )}
 
@@ -839,47 +929,90 @@ export default function InsightsScreen() {
           </View>
         )}
 
-        {/* 자산 분배 조언 */}
-        <View style={[styles.chartCard, { backgroundColor: Colors.primary + '08' }]}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-            <Ionicons name={advice.icon} size={22} color={Colors.primary} />
-            <Text style={styles.sectionTitle}>{advice.title}</Text>
+        {/* 자산 분배 진단 */}
+        <View style={[styles.chartCard, { backgroundColor: Colors.primary + '06' }]}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+            <Ionicons name="analytics-outline" size={22} color={Colors.primary} />
+            <Text style={styles.sectionTitle}>자산 분배 진단</Text>
           </View>
-          <Text style={{ fontSize: 14, color: Colors.textDark, lineHeight: 22 }}>{advice.desc}</Text>
+          {Array.isArray(advices) ? advices.map((adv, i) => (
+            <View key={i} style={[styles.adviceItem, { backgroundColor: (adviceColors[adv.type] || Colors.primary) + '08', borderLeftColor: adviceColors[adv.type] || Colors.primary }]}>
+              <Ionicons name={adviceIcons[adv.type] || 'bulb-outline'} size={18} color={adviceColors[adv.type] || Colors.primary} style={{ marginTop: 1 }} />
+              <Text style={{ flex: 1, fontSize: 13, color: Colors.textDark, lineHeight: 20, marginLeft: 8 }}>{adv.text}</Text>
+            </View>
+          )) : (
+            <Text style={{ fontSize: 14, color: Colors.textDark, lineHeight: 22 }}>{advices.desc}</Text>
+          )}
         </View>
 
-        {/* 투자 인사이트 */}
+        {/* 인사이트 & 목표 예측 */}
         {totalAsset > 0 && (
           <View style={styles.chartCard}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14 }}>
               <Ionicons name="bulb" size={22} color="#FFD93D" />
-              <Text style={styles.sectionTitle}>투자 인사이트</Text>
+              <Text style={styles.sectionTitle}>인사이트</Text>
             </View>
-            {insights.map((text, i) => (
-              <View key={i} style={{ flexDirection: 'row', marginBottom: 10, gap: 8 }}>
-                <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: Colors.primary, marginTop: 7 }} />
-                <Text style={{ flex: 1, fontSize: 14, color: Colors.textDark, lineHeight: 22 }}>{text}</Text>
+            {insights.map((item, i) => (
+              <View key={i} style={{ flexDirection: 'row', alignItems: 'flex-start', marginBottom: 12, gap: 10 }}>
+                <Ionicons name={item.icon} size={18} color={Colors.primary} style={{ marginTop: 1 }} />
+                <Text style={{ flex: 1, fontSize: 14, color: Colors.textDark, lineHeight: 22 }}>{item.text}</Text>
               </View>
             ))}
+          </View>
+        )}
 
-            {/* 추천 자산 배분 */}
-            {totalAsset > 0 && (
-              <View style={[styles.recommendBox, { backgroundColor: Colors.background }]}>
-                <Text style={{ fontSize: 13, fontWeight: '700', color: Colors.textBlack, marginBottom: 10 }}>추천 자산 배분</Text>
-                {[
-                  { name: '예적금', pct: '40-50%', desc: '안정적 수익, 비상 시 유동성', color: FUND_TYPE_MAP.savings.color },
-                  { name: '투자', pct: '30-40%', desc: 'ETF, 펀드 등 분산투자', color: FUND_TYPE_MAP.investment.color },
-                  { name: '비상금', pct: '10-20%', desc: '3-6개월 생활비 확보', color: FUND_TYPE_MAP.emergency.color },
-                ].map((item) => (
-                  <View key={item.name} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8, gap: 8 }}>
-                    <View style={[styles.assetLegendDot, { backgroundColor: item.color }]} />
-                    <Text style={{ fontWeight: '600', color: Colors.textBlack, width: 50 }}>{item.name}</Text>
-                    <Text style={{ fontWeight: '700', color: item.color, width: 50 }}>{item.pct}</Text>
-                    <Text style={{ fontSize: 12, color: Colors.textGray, flex: 1 }}>{item.desc}</Text>
+        {/* 투자처 추천 */}
+        <View style={styles.chartCard}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+            <Ionicons name="compass" size={22} color={Colors.primary} />
+            <Text style={styles.sectionTitle}>투자처 추천</Text>
+          </View>
+          {recommendations.map((rec, i) => (
+            <View key={i} style={[styles.recCard, { borderColor: rec.color + '30' }]}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+                <View style={[styles.recIcon, { backgroundColor: rec.color + '15' }]}>
+                  <Ionicons name={rec.icon} size={20} color={rec.color} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 15, fontWeight: '700', color: Colors.textBlack }}>{rec.title}</Text>
+                  <Text style={{ fontSize: 12, color: Colors.textGray, marginTop: 2 }}>{rec.desc}</Text>
+                </View>
+              </View>
+              <View style={{ gap: 6, marginLeft: 2 }}>
+                {rec.products.map((product, j) => (
+                  <View key={j} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: rec.color }} />
+                    <Text style={{ fontSize: 13, color: Colors.textDark }}>{product}</Text>
                   </View>
                 ))}
               </View>
-            )}
+            </View>
+          ))}
+        </View>
+
+        {/* 추천 자산 배분 가이드 */}
+        {totalAsset > 0 && (
+          <View style={[styles.chartCard, { backgroundColor: Colors.income + '06' }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+              <Ionicons name="school" size={22} color={Colors.income} />
+              <Text style={styles.sectionTitle}>자산 배분 가이드</Text>
+            </View>
+            {[
+              { name: '예적금', pct: '40-50%', desc: '안정적 수익, 비상 시 유동성 확보. 정기적금과 자유적금을 병행하세요.', color: FUND_TYPE_MAP.savings.color, icon: FUND_TYPE_MAP.savings.icon },
+              { name: '투자', pct: '30-40%', desc: 'ETF 중심 분산투자 추천. 국내+해외 비율을 3:7로 시작해보세요.', color: FUND_TYPE_MAP.investment.color, icon: FUND_TYPE_MAP.investment.icon },
+              { name: '비상금', pct: '10-20%', desc: '월 생활비 3-6개월분 확보. CMA나 파킹통장에 보관하세요.', color: FUND_TYPE_MAP.emergency.color, icon: FUND_TYPE_MAP.emergency.icon },
+            ].map((item) => (
+              <View key={item.name} style={[styles.guideItem, { borderLeftColor: item.color }]}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Ionicons name={item.icon} size={16} color={item.color} />
+                    <Text style={{ fontWeight: '700', fontSize: 14, color: Colors.textBlack }}>{item.name}</Text>
+                  </View>
+                  <Text style={{ fontWeight: '800', fontSize: 14, color: item.color }}>{item.pct}</Text>
+                </View>
+                <Text style={{ fontSize: 12, color: Colors.textGray, lineHeight: 18 }}>{item.desc}</Text>
+              </View>
+            ))}
           </View>
         )}
       </>
@@ -900,7 +1033,6 @@ export default function InsightsScreen() {
           <View style={styles.segmentRow}>
             {[
               { id: 'stats', icon: 'pie-chart', label: '통계' },
-              { id: 'allowance', icon: 'wallet', label: '용돈' },
               { id: 'asset', icon: 'trending-up', label: '자산' },
             ].map((t) => (
               <TouchableOpacity key={t.id} style={[styles.segmentBtn, tab === t.id && styles.segmentBtnActive]} onPress={() => setTab(t.id)}>
@@ -927,7 +1059,6 @@ export default function InsightsScreen() {
 
         <View style={styles.content}>
           {tab === 'stats' && renderStats()}
-          {tab === 'allowance' && renderAllowance()}
           {tab === 'asset' && renderAsset()}
         </View>
       </ScrollView>
@@ -1077,6 +1208,14 @@ const getStyles = (Colors) => StyleSheet.create({
   assetLegendDot: { width: 8, height: 8, borderRadius: 4 },
   assetLegendText: { fontSize: 11, color: Colors.textGray },
   recommendBox: { borderRadius: 14, padding: 16, marginTop: 14 },
+  ratioCompareBox: { borderRadius: 14, padding: 16, marginTop: 12 },
+  healthBadge: { alignItems: 'center', justifyContent: 'center', width: 60, height: 60, borderRadius: 16, borderWidth: 1.5 },
+  healthGrade: { fontSize: 22, fontWeight: '900' },
+  healthScore: { fontSize: 10, fontWeight: '600', marginTop: -2 },
+  adviceItem: { flexDirection: 'row', alignItems: 'flex-start', borderLeftWidth: 3, borderRadius: 10, padding: 12, marginBottom: 8 },
+  recCard: { borderWidth: 1, borderRadius: 14, padding: 16, marginBottom: 10 },
+  recIcon: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+  guideItem: { borderLeftWidth: 3, paddingLeft: 12, paddingVertical: 8, marginBottom: 10 },
   // 모달
   modalOverlay: { flex: 1, backgroundColor: Colors.modalOverlay, justifyContent: 'flex-end' },
   modalContent: { backgroundColor: Colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 40 },
