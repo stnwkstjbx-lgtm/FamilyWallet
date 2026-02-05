@@ -772,7 +772,14 @@ export default function InsightsScreen() {
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={{ fontSize: 13, fontWeight: '600', color: Colors.textDark }} numberOfLines={1}>{tx.memo || ALL_CATEGORY_NAMES[tx.category] || '기타'}</Text>
-                    <Text style={{ fontSize: 11, color: Colors.textGray }}>{(tx.date || '').slice(5).replace('-', '/')} · {ALL_CATEGORY_NAMES[tx.category] || '기타'}</Text>
+                    <Text style={{ fontSize: 11, color: Colors.textGray }}>{(() => {
+                      const raw = tx.createdAt || tx.date || '';
+                      if (!raw) return '';
+                      const d = new Date(raw);
+                      if (isNaN(d.getTime())) return raw.slice(5, 10).replace('-', '/');
+                      const kst = new Date(d.getTime() + 9 * 60 * 60 * 1000);
+                      return `${String(kst.getUTCMonth() + 1).padStart(2, '0')}/${String(kst.getUTCDate()).padStart(2, '0')} ${String(kst.getUTCHours()).padStart(2, '0')}:${String(kst.getUTCMinutes()).padStart(2, '0')}`;
+                    })()} · {ALL_CATEGORY_NAMES[tx.category] || '기타'}</Text>
                   </View>
                   <View style={{ alignItems: 'flex-end' }}>
                     <Text style={{ fontSize: 14, fontWeight: '700', color: Colors.expense }}>{formatMoney(tx.amount)}</Text>
