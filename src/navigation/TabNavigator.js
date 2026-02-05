@@ -7,6 +7,7 @@ import HomeScreen from '../screens/HomeScreen';
 import AddScreen from '../screens/AddScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import InsightsScreen from '../screens/InsightsScreen';
+import AssetScreen from '../screens/AssetScreen';
 
 const Tab = createBottomTabNavigator();
 
@@ -21,6 +22,7 @@ export default function TabNavigator() {
           if (route.name === '홈') iconName = focused ? 'home' : 'home-outline';
           else if (route.name === '추가') iconName = focused ? 'add-circle' : 'add-circle-outline';
           else if (route.name === '분석') iconName = focused ? 'analytics' : 'analytics-outline';
+          else if (route.name === '자산') iconName = focused ? 'trending-up' : 'trending-up-outline';
           else if (route.name === '설정') iconName = focused ? 'settings' : 'settings-outline';
           return <Ionicons name={iconName} size={size} color={color} />;
         },
@@ -49,6 +51,7 @@ export default function TabNavigator() {
       <Tab.Screen name="홈" component={HomeScreen} />
       <Tab.Screen name="추가" component={AddScreen} />
       <Tab.Screen name="분석" component={InsightsScreen} />
+      <Tab.Screen name="자산" component={AssetScreen} />
       <Tab.Screen name="설정" component={SettingsScreen} />
     </Tab.Navigator>
   );
