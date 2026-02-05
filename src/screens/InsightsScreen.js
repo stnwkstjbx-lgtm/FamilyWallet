@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView, StatusBar, TouchableOpacity, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, StatusBar, TouchableOpacity, Platform, TextInput, Modal, Alert } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import Svg, { G, Circle } from 'react-native-svg';
@@ -7,9 +7,10 @@ import { Calendar, LocaleConfig } from 'react-native-calendars';
 import { useTheme } from '../constants/ThemeContext';
 import { useAuth } from '../constants/AuthContext';
 import { useWallet } from '../constants/WalletContext';
-import { ALL_CATEGORY_NAMES, ALL_CATEGORY_ICONS, FUND_TYPES, FUND_TYPE_MAP } from '../constants/categories';
+import { ALL_CATEGORY_NAMES, ALL_CATEGORY_ICONS, EXPENSE_CATEGORIES, FUND_TYPES, FUND_TYPE_MAP, ASSET_FUND_TYPES } from '../constants/categories';
+import { formatAmountInput, parseAmount, validateAmount } from '../utils/format';
 import { db } from '../firebase/firebaseConfig';
-import { collection, onSnapshot, query } from 'firebase/firestore';
+import { collection, onSnapshot, query, where, orderBy, addDoc, doc, updateDoc } from 'firebase/firestore';
 
 LocaleConfig.locales['ko'] = {
   monthNames: ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월'],
@@ -19,13 +20,25 @@ LocaleConfig.locales['ko'] = {
 };
 LocaleConfig.defaultLocale = 'ko';
 
+const showAlert = (title, message, buttons) => {
+  if (Platform.OS === 'web') {
+    if (buttons) {
+      const confirmed = window.confirm(`${title}\n\n${message}`);
+      if (confirmed && buttons[1]) buttons[1].onPress();
+    } else { window.alert(`${title}\n\n${message}`); }
+  } else { Alert.alert(title, message, buttons); }
+};
+
 export default function InsightsScreen() {
   const { colors: Colors } = useTheme();
   const { user } = useAuth();
-  const { currentWalletId, currentWallet } = useWallet();
+  const {
+    currentWalletId, currentWallet, isAdmin, accumulatedFunds,
+    requestAllowance, respondToAllowanceRequest,
+  } = useWallet();
   const styles = getStyles(Colors);
 
-  const [tab, setTab] = useState('stats'); // 'stats' | 'calendar'
+  const [tab, setTab] = useState('stats'); // 'stats' | 'allowance' | 'asset'
   const [allTransactions, setAllTransactions] = useState([]);
 
   // 월 네비게이션
@@ -58,39 +71,28 @@ export default function InsightsScreen() {
   const transactions = useMemo(() => {
     return allTransactions.filter((t) => {
       if (t.fundType === 'personal') {
-        const txOwner = t.userId || t.memberId;
-        if (txOwner !== user?.uid) return false;
+        if ((t.userId || t.memberId) !== user?.uid) return false;
       }
       if (t.fundType === 'allowance_allocation') return false;
       return true;
     });
   }, [allTransactions, user?.uid]);
 
-  // 해당 월 거래
-  const monthly = useMemo(() => {
-    return transactions.filter((t) => (t.date || '').startsWith(yearMonth));
-  }, [transactions, yearMonth]);
-
-  // 이전 월
+  const monthly = useMemo(() => transactions.filter((t) => (t.date || '').startsWith(yearMonth)), [transactions, yearMonth]);
   const prevYm = useMemo(() => {
     const [y, m] = yearMonth.split('-').map(Number);
     const d = new Date(y, m - 2, 1);
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
   }, [yearMonth]);
-
-  const prevMonthly = useMemo(() => {
-    return transactions.filter((t) => (t.date || '').startsWith(prevYm));
-  }, [transactions, prevYm]);
+  const prevMonthly = useMemo(() => transactions.filter((t) => (t.date || '').startsWith(prevYm)), [transactions, prevYm]);
 
   const formatMoney = (n) => Math.abs(n || 0).toLocaleString('ko-KR') + '원';
-
   const formatMoneyShort = (n) => {
     const abs = Math.abs(n || 0);
     if (abs >= 10000) {
       const man = Math.floor(abs / 10000);
       const rest = abs % 10000;
-      if (rest === 0) return `${man}만`;
-      return `${man}.${Math.floor(rest / 1000)}만`;
+      return rest === 0 ? `${man}만` : `${man}.${Math.floor(rest / 1000)}만`;
     }
     return abs.toLocaleString('ko-KR');
   };
@@ -98,11 +100,9 @@ export default function InsightsScreen() {
   // ═══════════════════════════════════
   // 통계 탭 데이터
   // ═══════════════════════════════════
-
   const totalIncome = monthly.filter((t) => t.type === 'income').reduce((s, t) => s + (t.amount || 0), 0);
   const totalExpense = monthly.filter((t) => t.type === 'expense').reduce((s, t) => s + (t.amount || 0), 0);
 
-  // 6분류별 금액 집계
   const fundBreakdown = useMemo(() => {
     const result = {};
     FUND_TYPES.forEach((ft) => { result[ft.id] = 0; });
@@ -115,11 +115,9 @@ export default function InsightsScreen() {
 
   const prevTotalIncome = prevMonthly.filter((t) => t.type === 'income').reduce((s, t) => s + (t.amount || 0), 0);
   const prevTotalExpense = prevMonthly.filter((t) => t.type === 'expense').reduce((s, t) => s + (t.amount || 0), 0);
-
   const incomeChange = prevTotalIncome > 0 ? Math.round(((totalIncome - prevTotalIncome) / prevTotalIncome) * 100) : null;
   const expenseChange = prevTotalExpense > 0 ? Math.round(((totalExpense - prevTotalExpense) / prevTotalExpense) * 100) : null;
 
-  // 지출 카테고리
   const expenseCatData = useMemo(() => {
     const catData = {};
     monthly.filter((t) => t.type === 'expense' && t.fundType !== 'allowance_allocation').forEach((t) => {
@@ -129,7 +127,6 @@ export default function InsightsScreen() {
     return Object.entries(catData).sort((a, b) => b[1].total - a[1].total);
   }, [monthly]);
 
-  // 수입 카테고리
   const incomeCatData = useMemo(() => {
     const catData = {};
     monthly.filter((t) => t.type === 'income').forEach((t) => {
@@ -139,7 +136,6 @@ export default function InsightsScreen() {
     return Object.entries(catData).sort((a, b) => b[1] - a[1]);
   }, [monthly]);
 
-  // 일별 지출 추이 (바 차트)
   const dailyExpense = useMemo(() => {
     const days = {};
     monthly.filter((t) => t.type === 'expense').forEach((t) => {
@@ -148,26 +144,20 @@ export default function InsightsScreen() {
     });
     return days;
   }, [monthly]);
-
-  const maxDailyExpense = useMemo(() => {
-    return Math.max(...Object.values(dailyExpense), 1);
-  }, [dailyExpense]);
-
+  const maxDailyExpense = useMemo(() => Math.max(...Object.values(dailyExpense), 1), [dailyExpense]);
   const daysInMonth = useMemo(() => {
     const [y, m] = yearMonth.split('-').map(Number);
     return new Date(y, m, 0).getDate();
   }, [yearMonth]);
 
-  // 도넛 차트
   const chartSize = 170;
   const strokeWidth = 26;
   const radius = (chartSize - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
 
   // ═══════════════════════════════════
-  // 캘린더 탭 데이터
+  // 캘린더 데이터
   // ═══════════════════════════════════
-
   const dateAggregates = useMemo(() => {
     const agg = {};
     transactions.forEach((t) => {
@@ -200,7 +190,6 @@ export default function InsightsScreen() {
   }, [transactions, selectedDate]);
 
   const dayData = dateAggregates[selectedDate] || { income: 0, expense: 0 };
-
   const monthlySummary = useMemo(() => {
     let income = 0, expense = 0;
     Object.entries(dateAggregates).forEach(([date, data]) => {
@@ -241,14 +230,176 @@ export default function InsightsScreen() {
   };
 
   // ═══════════════════════════════════
-  // 렌더링
+  // 용돈 탭 데이터
   // ═══════════════════════════════════
+  const myAllowance = currentWallet?.members?.[user?.uid]?.monthlyAllowance || currentWallet?.members?.[user?.uid]?.allowance || 0;
+  const [personalTransactions, setPersonalTransactions] = useState([]);
+  const [allocationTransactions, setAllocationTransactions] = useState([]);
+  const [allowanceRequests, setAllowanceRequests] = useState([]);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState(null);
+  const [expenseAmount, setExpenseAmount] = useState('');
+  const [expenseDesc, setExpenseDesc] = useState('');
+  const [showRequestModal, setShowRequestModal] = useState(false);
+  const [requestAmount, setRequestAmount] = useState('');
+  const [requestMessage, setRequestMessage] = useState('');
 
+  useEffect(() => {
+    if (!currentWalletId || !user) return;
+    const txRef = collection(db, 'wallets', currentWalletId, 'transactions');
+    const q1 = query(txRef, where('fundType', '==', 'personal'), where('userId', '==', user.uid), orderBy('createdAt', 'desc'));
+    const q2 = query(txRef, where('fundType', '==', 'allowance_allocation'), where('allocatedTo', '==', user.uid));
+    const unsub1 = onSnapshot(q1, (snap) => setPersonalTransactions(snap.docs.map((d) => ({ id: d.id, ...d.data() }))));
+    const unsub2 = onSnapshot(q2, (snap) => setAllocationTransactions(snap.docs.map((d) => ({ id: d.id, ...d.data() }))));
+    return () => { unsub1(); unsub2(); };
+  }, [currentWalletId, user]);
+
+  useEffect(() => {
+    if (!currentWalletId) return;
+    const reqRef = collection(db, 'wallets', currentWalletId, 'allowanceRequests');
+    const q = query(reqRef, orderBy('createdAt', 'desc'));
+    const unsub = onSnapshot(q, (snap) => setAllowanceRequests(snap.docs.map((d) => ({ id: d.id, ...d.data() }))));
+    return () => unsub();
+  }, [currentWalletId]);
+
+  const monthlyStats = useMemo(() => {
+    const now = new Date();
+    const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const stats = {};
+    const allocatedMonths = {};
+    allocationTransactions.forEach((tx) => {
+      const ym = tx.allocMonth || tx.date?.slice(0, 7);
+      if (ym) allocatedMonths[ym] = tx.amount || 0;
+    });
+    if (!allocatedMonths[currentMonth] && myAllowance > 0) allocatedMonths[currentMonth] = myAllowance;
+    Object.entries(allocatedMonths).forEach(([ym, amount]) => { stats[ym] = { allowance: amount, spent: 0, saved: amount }; });
+    personalTransactions.forEach((tx) => {
+      const txMonth = tx.date?.slice(0, 7);
+      if (stats[txMonth]) { stats[txMonth].spent += tx.amount || 0; stats[txMonth].saved = stats[txMonth].allowance - stats[txMonth].spent; }
+    });
+    return stats;
+  }, [personalTransactions, allocationTransactions, myAllowance]);
+
+  const allowanceReport = useMemo(() => {
+    const now = new Date();
+    const cm = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const lm = (() => { const d = new Date(now.getFullYear(), now.getMonth() - 1, 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; })();
+    const current = monthlyStats[cm] || { allowance: myAllowance, spent: 0, saved: myAllowance };
+    const last = monthlyStats[lm] || { allowance: myAllowance, spent: 0, saved: myAllowance };
+    const recentMonths = [];
+    for (let i = 1; i <= 6; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      if (monthlyStats[key] && monthlyStats[key].allowance > 0) recentMonths.push(monthlyStats[key]);
+    }
+    const totalSaved = recentMonths.reduce((sum, m) => sum + Math.max(0, m.saved), 0);
+    const avgSaved = recentMonths.length > 0 ? Math.round(totalSaved / recentMonths.length) : Math.max(0, current.saved);
+    const currentMonthTxs = personalTransactions.filter((tx) => tx.date?.slice(0, 7) === cm);
+    return { cm, current, last, totalSaved, avgSaved, projectedYearly: avgSaved * 12, currentMonthTxs, recentMonths };
+  }, [monthlyStats, personalTransactions, myAllowance]);
+
+  const remainingPercent = myAllowance > 0 ? Math.max(0, Math.min(100, Math.round((allowanceReport.current.saved / myAllowance) * 100))) : 0;
+  const myPendingRequest = allowanceRequests.find((r) => r.userId === user?.uid && r.status === 'pending');
+  const pendingRequests = allowanceRequests.filter((r) => r.status === 'pending');
+
+  const handleAddExpense = async () => {
+    if (!selectedCategory) { showAlert('알림', '카테고리를 선택해주세요'); return; }
+    const amount = parseAmount(expenseAmount);
+    const amtCheck = validateAmount(amount);
+    if (!amtCheck.valid) { showAlert('알림', amtCheck.message); return; }
+    try {
+      await addDoc(collection(db, 'wallets', currentWalletId, 'transactions'), {
+        type: 'expense', fundType: 'personal', category: selectedCategory, amount,
+        memo: expenseDesc || ALL_CATEGORY_NAMES[selectedCategory] || selectedCategory,
+        date: new Date().toISOString().slice(0, 10), userId: user.uid, memberId: user.uid,
+        member: currentWallet?.members?.[user.uid]?.name || user.displayName || user.email,
+        memberName: currentWallet?.members?.[user.uid]?.name || user.displayName || user.email,
+        createdAt: new Date().toISOString(),
+      });
+      setShowAddModal(false); setSelectedCategory(null); setExpenseAmount(''); setExpenseDesc('');
+    } catch (e) { showAlert('오류', e.message); }
+  };
+
+  const handleRequestAllowance = async () => {
+    const amount = parseAmount(requestAmount);
+    const amtCheck = validateAmount(amount);
+    if (!amtCheck.valid) { showAlert('알림', amtCheck.message); return; }
+    const result = await requestAllowance(amount, requestMessage);
+    if (result.success) { setShowRequestModal(false); setRequestAmount(''); setRequestMessage(''); showAlert('요청 완료', '관리자에게 용돈 요청을 보냈어요!'); }
+    else showAlert('오류', result.message);
+  };
+
+  // ═══════════════════════════════════
+  // 자산 탭 데이터
+  // ═══════════════════════════════════
+  const fundGoals = currentWallet?.fundGoals || {};
+
+  const assetHistory = useMemo(() => {
+    const months = {};
+    allTransactions.forEach((tx) => {
+      if (tx.type !== 'expense' || !ASSET_FUND_TYPES.includes(tx.fundType)) return;
+      const ym = (tx.date || '').slice(0, 7);
+      if (!ym) return;
+      if (!months[ym]) months[ym] = { savings: 0, investment: 0, emergency: 0 };
+      months[ym][tx.fundType] += tx.amount || 0;
+    });
+    return Object.entries(months).sort(([a], [b]) => a.localeCompare(b));
+  }, [allTransactions]);
+
+  const totalAsset = (accumulatedFunds?.savings || 0) + (accumulatedFunds?.investment || 0) + (accumulatedFunds?.emergency || 0);
+  const assetRatios = totalAsset > 0 ? {
+    savings: Math.round(((accumulatedFunds?.savings || 0) / totalAsset) * 100),
+    investment: Math.round(((accumulatedFunds?.investment || 0) / totalAsset) * 100),
+    emergency: Math.round(((accumulatedFunds?.emergency || 0) / totalAsset) * 100),
+  } : { savings: 0, investment: 0, emergency: 0 };
+
+  // 자산 분배 추천
+  const getAssetAdvice = () => {
+    if (totalAsset === 0) return { icon: 'bulb-outline', title: '자산 관리를 시작해보세요', desc: '예적금, 투자, 비상금으로 자산을 분류하여 기록하면\n맞춤 분석을 제공합니다.' };
+    const advices = [];
+    if (assetRatios.emergency < 10 && totalAsset > 0) advices.push('비상금 비율이 낮아요. 총 자산의 10-20%는 비상금으로 유지하는 것이 안전합니다.');
+    if (assetRatios.investment > 70) advices.push('투자 비중이 높아요. 리스크 분산을 위해 예적금과 비상금 비율을 높이는 것을 고려하세요.');
+    if (assetRatios.savings > 80) advices.push('예적금 비중이 높아요. 일부를 투자로 전환하면 수익률을 높일 수 있습니다.');
+    if (assetRatios.investment === 0 && totalAsset > 500000) advices.push('투자를 아직 시작하지 않았어요. 소액부터 분산투자를 시작해보는 것은 어떨까요?');
+    if (advices.length === 0) advices.push('자산 배분이 균형 잡혀 있어요! 꾸준히 유지하세요.');
+    return { icon: 'analytics-outline', title: '자산 분배 조언', desc: advices.join('\n\n') };
+  };
+
+  const getInvestmentInsight = () => {
+    const monthlyAvg = assetHistory.length > 0
+      ? Math.round(assetHistory.reduce((s, [, d]) => s + d.savings + d.investment + d.emergency, 0) / assetHistory.length)
+      : 0;
+    const insights = [];
+    if (monthlyAvg > 0) insights.push(`월 평균 ${formatMoney(monthlyAvg)}을 자산에 투입하고 있어요.`);
+    if (assetHistory.length >= 3) {
+      const recent3 = assetHistory.slice(-3);
+      const recent3Total = recent3.reduce((s, [, d]) => s + d.savings + d.investment + d.emergency, 0);
+      const recent3Avg = Math.round(recent3Total / 3);
+      if (recent3Avg > monthlyAvg) insights.push('최근 3개월 투입 금액이 증가 추세입니다. 좋은 흐름이에요!');
+      else if (recent3Avg < monthlyAvg * 0.7) insights.push('최근 3개월 투입 금액이 감소했어요. 자산 증식 속도가 느려지고 있습니다.');
+    }
+    const investAmt = accumulatedFunds?.investment || 0;
+    if (investAmt > 0) {
+      insights.push(`현재 투자 자산 ${formatMoney(investAmt)}. 분산투자와 정기적인 리밸런싱을 추천합니다.`);
+    }
+    if (insights.length === 0) insights.push('자산 데이터가 쌓이면 더 정확한 인사이트를 제공합니다.');
+    return insights;
+  };
+
+  // ═══════════════════════════════════
+  // 렌더링 - 통계 탭
+  // ═══════════════════════════════════
   const renderStats = () => {
     let accumulated = 0;
     return (
       <>
-        {/* 수입/지출 요약 */}
+        {/* 월 네비 */}
+        <View style={styles.monthNav}>
+          <TouchableOpacity onPress={() => changeMonth(-1)} style={styles.monthNavBtn}><Ionicons name="chevron-back" size={20} color={Colors.primary} /></TouchableOpacity>
+          <Text style={styles.monthNavText}>{ymLabel}</Text>
+          <TouchableOpacity onPress={() => changeMonth(1)} style={styles.monthNavBtn}><Ionicons name="chevron-forward" size={20} color={Colors.primary} /></TouchableOpacity>
+        </View>
+
         <View style={styles.summaryRow}>
           <View style={[styles.summaryCard, { borderLeftColor: Colors.income }]}>
             <Text style={styles.summaryLabel}>수입</Text>
@@ -272,7 +423,6 @@ export default function InsightsScreen() {
           </View>
         </View>
 
-        {/* 잔액 */}
         <View style={styles.balanceCard}>
           <Text style={styles.balanceLabel}>이번 달 잔액</Text>
           <Text style={[styles.balanceAmount, { color: (totalIncome - totalExpense) >= 0 ? Colors.income : Colors.expense }]}>
@@ -280,7 +430,7 @@ export default function InsightsScreen() {
           </Text>
         </View>
 
-        {/* 6분류 지출 출처 */}
+        {/* 6분류 출처 */}
         {totalExpense > 0 && (
           <View style={styles.fundCard}>
             <Text style={styles.sectionTitle}>지출 출처 비율</Text>
@@ -289,11 +439,7 @@ export default function InsightsScreen() {
                 const amt = fundBreakdown[ft.id] || 0;
                 const pct = totalExpense > 0 ? Math.round((amt / totalExpense) * 100) : 0;
                 if (pct === 0) return null;
-                return (
-                  <View key={ft.id} style={[styles.fundBar, { flex: pct, backgroundColor: ft.color }]}>
-                    {pct >= 15 && <Text style={styles.fundBarText}>{ft.name} {pct}%</Text>}
-                  </View>
-                );
+                return <View key={ft.id} style={[styles.fundBar, { flex: pct, backgroundColor: ft.color }]}>{pct >= 15 && <Text style={styles.fundBarText}>{ft.name} {pct}%</Text>}</View>;
               })}
             </View>
             <View style={styles.fundLegendRow}>
@@ -313,7 +459,7 @@ export default function InsightsScreen() {
           </View>
         )}
 
-        {/* 일별 지출 추이 */}
+        {/* 일별 지출 */}
         {Object.keys(dailyExpense).length > 0 && (
           <View style={styles.chartCard}>
             <Text style={styles.sectionTitle}>일별 지출 추이</Text>
@@ -337,7 +483,7 @@ export default function InsightsScreen() {
           </View>
         )}
 
-        {/* 지출 카테고리 도넛 */}
+        {/* 도넛 차트 */}
         {expenseCatData.length > 0 && (
           <View style={styles.chartCard}>
             <Text style={styles.sectionTitle}>지출 카테고리</Text>
@@ -349,12 +495,7 @@ export default function InsightsScreen() {
                     const dashLength = circumference * pct;
                     const dashOffset = circumference * accumulated;
                     accumulated += pct;
-                    return (
-                      <Circle key={cat} cx={chartSize / 2} cy={chartSize / 2} r={radius}
-                        stroke={Colors.category[cat] || Colors.primary} strokeWidth={strokeWidth}
-                        strokeDasharray={`${dashLength} ${circumference - dashLength}`}
-                        strokeDashoffset={-dashOffset} fill="none" strokeLinecap="round" />
-                    );
+                    return <Circle key={cat} cx={chartSize / 2} cy={chartSize / 2} r={radius} stroke={Colors.category[cat] || Colors.primary} strokeWidth={strokeWidth} strokeDasharray={`${dashLength} ${circumference - dashLength}`} strokeDashoffset={-dashOffset} fill="none" strokeLinecap="round" />;
                   })}
                 </G>
               </Svg>
@@ -375,7 +516,6 @@ export default function InsightsScreen() {
           </View>
         )}
 
-        {/* 수입 카테고리 */}
         {incomeCatData.length > 0 && (
           <View style={styles.chartCard}>
             <Text style={styles.sectionTitle}>수입 카테고리</Text>
@@ -391,6 +531,55 @@ export default function InsightsScreen() {
           </View>
         )}
 
+        {/* 캘린더 */}
+        <View style={styles.chartCard}>
+          <Text style={styles.sectionTitle}>캘린더</Text>
+          <Calendar
+            markingType="multi-dot" markedDates={calendarMarks}
+            onDayPress={(day) => setSelectedDate(day.dateString)}
+            onMonthChange={(month) => setYearMonth(`${month.year}-${String(month.month).padStart(2, '0')}`)}
+            key={yearMonth} current={`${yearMonth}-01`}
+            dayComponent={renderDayComponent}
+            theme={{ backgroundColor: Colors.surface, calendarBackground: Colors.surface, textSectionTitleColor: Colors.textGray, arrowColor: Colors.primary, monthTextColor: Colors.textBlack, textMonthFontWeight: '800', textMonthFontSize: 17, textDayHeaderFontWeight: '600', textDayHeaderFontSize: 13 }}
+            style={{ borderRadius: 18 }}
+          />
+        </View>
+
+        {selectedDate && (
+          <View style={styles.chartCard}>
+            <Text style={styles.sectionTitle}>{formatDateLabel(selectedDate)}</Text>
+            {(dayData.income > 0 || dayData.expense > 0) && (
+              <View style={styles.daySummary}>
+                <View style={[styles.daySummaryItem, { backgroundColor: Colors.income + '12' }]}>
+                  <Ionicons name="arrow-down-circle" size={16} color={Colors.income} />
+                  <Text style={[styles.daySummaryAmt, { color: Colors.income }]}>{formatMoney(dayData.income)}</Text>
+                </View>
+                <View style={[styles.daySummaryItem, { backgroundColor: Colors.expense + '12' }]}>
+                  <Ionicons name="arrow-up-circle" size={16} color={Colors.expense} />
+                  <Text style={[styles.daySummaryAmt, { color: Colors.expense }]}>{formatMoney(dayData.expense)}</Text>
+                </View>
+              </View>
+            )}
+            {selectedTx.length === 0 ? (
+              <Text style={styles.emptyText}>이 날의 기록이 없어요</Text>
+            ) : (
+              selectedTx.map((item) => {
+                const ftInfo = FUND_TYPE_MAP[item.fundType] || FUND_TYPE_MAP['shared'];
+                const catColor = Colors.category[item.category] || Colors.primary;
+                return (
+                  <View key={item.id} style={styles.catRow}>
+                    <View style={[styles.txIconSmall, { backgroundColor: catColor + '15' }]}><Ionicons name={ALL_CATEGORY_ICONS[item.category] || 'ellipsis-horizontal-outline'} size={16} color={catColor} /></View>
+                    <Text style={styles.catName} numberOfLines={1}>{item.memo || ALL_CATEGORY_NAMES[item.category] || '기타'}</Text>
+                    <Text style={[styles.catAmount, { color: item.type === 'income' ? Colors.income : Colors.expense }]}>
+                      {item.type === 'income' ? '+' : '-'}{formatMoney(item.amount)}
+                    </Text>
+                  </View>
+                );
+              })
+            )}
+          </View>
+        )}
+
         {expenseCatData.length === 0 && incomeCatData.length === 0 && (
           <View style={styles.emptyCard}>
             <Ionicons name="bar-chart-outline" size={36} color={Colors.textLight} />
@@ -401,88 +590,305 @@ export default function InsightsScreen() {
     );
   };
 
-  const renderCalendar = () => (
-    <>
-      <View style={styles.calendarCard}>
-        <Calendar
-          markingType="multi-dot" markedDates={calendarMarks}
-          onDayPress={(day) => setSelectedDate(day.dateString)}
-          onMonthChange={(month) => setYearMonth(`${month.year}-${String(month.month).padStart(2, '0')}`)}
-          key={yearMonth}
-          current={`${yearMonth}-01`}
-          dayComponent={renderDayComponent}
-          theme={{ backgroundColor: Colors.surface, calendarBackground: Colors.surface, textSectionTitleColor: Colors.textGray, arrowColor: Colors.primary, monthTextColor: Colors.textBlack, textMonthFontWeight: '800', textMonthFontSize: 17, textDayHeaderFontWeight: '600', textDayHeaderFontSize: 13 }}
-          style={{ borderRadius: 18 }}
-        />
-      </View>
-
-      <View style={styles.legendRow}>
-        <View style={styles.legendItem}><View style={[styles.legendDot, { backgroundColor: Colors.income }]} /><Text style={styles.legendText}>수입</Text></View>
-        <View style={styles.legendItem}><View style={[styles.legendDot, { backgroundColor: Colors.expense }]} /><Text style={styles.legendText}>지출</Text></View>
-        <View style={styles.legendItem}><Ionicons name="lock-closed" size={11} color={Colors.textLight} /><Text style={styles.legendText}>타인 용돈은 숨김</Text></View>
-      </View>
-
-      {selectedDate && (
-        <View style={styles.dayDetail}>
-          <View style={styles.dayDetailHeader}>
-            <Text style={styles.dayDetailTitle}>{formatDateLabel(selectedDate)}</Text>
-            {(dayData.income > 0 || dayData.expense > 0) && (
-              <Text style={[styles.dayDetailNet, { color: (dayData.income - dayData.expense) >= 0 ? Colors.income : Colors.expense }]}>
-                {(dayData.income - dayData.expense) >= 0 ? '+' : '-'}{formatMoney(dayData.income - dayData.expense)}
-              </Text>
-            )}
-          </View>
-          {(dayData.income > 0 || dayData.expense > 0) && (
-            <View style={styles.daySummary}>
-              <View style={styles.daySummaryItem}>
-                <View style={[styles.daySummaryIcon, { backgroundColor: Colors.income + '18' }]}><Ionicons name="arrow-down-circle" size={16} color={Colors.income} /></View>
-                <View><Text style={styles.daySummaryLabel}>수입</Text><Text style={[styles.daySummaryAmountText, { color: Colors.income }]}>{formatMoney(dayData.income)}</Text></View>
+  // ═══════════════════════════════════
+  // 렌더링 - 용돈 탭
+  // ═══════════════════════════════════
+  const renderAllowance = () => {
+    const hasAllowance = myAllowance > 0;
+    return (
+      <>
+        {/* 내 용돈 요약 */}
+        <View style={styles.chartCard}>
+          <Text style={styles.sectionTitle}>내 용돈 현황</Text>
+          {hasAllowance ? (
+            <>
+              <View style={styles.allowSummaryRow}>
+                <View style={styles.allowSummaryItem}>
+                  <Text style={styles.allowSummaryLabel}>배분</Text>
+                  <Text style={[styles.allowSummaryVal, { color: Colors.primary }]}>{formatMoney(myAllowance)}</Text>
+                </View>
+                <View style={styles.allowSummaryItem}>
+                  <Text style={styles.allowSummaryLabel}>사용</Text>
+                  <Text style={[styles.allowSummaryVal, { color: Colors.expense }]}>{formatMoney(allowanceReport.current.spent)}</Text>
+                </View>
+                <View style={styles.allowSummaryItem}>
+                  <Text style={styles.allowSummaryLabel}>잔액</Text>
+                  <Text style={[styles.allowSummaryVal, { color: allowanceReport.current.saved >= 0 ? Colors.income : Colors.expense }]}>{formatMoney(allowanceReport.current.saved)}</Text>
+                </View>
               </View>
-              <View style={styles.daySummaryItem}>
-                <View style={[styles.daySummaryIcon, { backgroundColor: Colors.expense + '18' }]}><Ionicons name="arrow-up-circle" size={16} color={Colors.expense} /></View>
-                <View><Text style={styles.daySummaryLabel}>지출</Text><Text style={[styles.daySummaryAmountText, { color: Colors.expense }]}>{formatMoney(dayData.expense)}</Text></View>
+              <View style={styles.allowBar}>
+                <View style={[styles.allowBarFill, { width: `${Math.min(100, 100 - remainingPercent)}%`, backgroundColor: remainingPercent > 50 ? Colors.income : remainingPercent > 20 ? Colors.warning : Colors.expense }]} />
               </View>
-            </View>
-          )}
-          {selectedTx.length === 0 ? (
-            <View style={styles.noDataBox}><Ionicons name="receipt-outline" size={36} color={Colors.textLight} /><Text style={styles.noDataText}>이 날의 기록이 없어요</Text></View>
+              <Text style={[styles.allowBarText2, { color: Colors.textGray }]}>{remainingPercent}% 남음</Text>
+            </>
           ) : (
-            <View style={styles.txList}>
-              <Text style={styles.txListTitle}>상세 내역</Text>
-              {selectedTx.map((item, index) => {
-                const ftInfo = FUND_TYPE_MAP[item.fundType] || FUND_TYPE_MAP['shared'];
-                const catColor = Colors.category[item.category] || Colors.primary;
-                return (
-                  <View key={item.id} style={[styles.txItem, index === selectedTx.length - 1 && { borderBottomWidth: 0 }]}>
-                    <View style={[styles.txIcon, { backgroundColor: catColor + '15' }]}><Ionicons name={ALL_CATEGORY_ICONS[item.category] || 'ellipsis-horizontal-outline'} size={18} color={catColor} /></View>
-                    <View style={styles.txInfo}>
-                      <View style={styles.txTitleRow}>
-                        <Text style={styles.txTitle} numberOfLines={1}>{item.memo || ALL_CATEGORY_NAMES[item.category] || '기타'}</Text>
-                        {item.type === 'expense' && ftInfo && (
-                          <View style={[styles.fundTag, { backgroundColor: ftInfo.color + '15' }]}>
-                            <Ionicons name={ftInfo.icon} size={9} color={ftInfo.color} />
-                            <Text style={[styles.fundTagText, { color: ftInfo.color }]}>{ftInfo.name}</Text>
-                          </View>
-                        )}
-                      </View>
-                      <Text style={styles.txMember}>{item.member || item.memberName || '미지정'}</Text>
-                    </View>
-                    <Text style={[styles.txAmount, { color: item.type === 'income' ? Colors.income : Colors.expense }]}>
-                      {item.type === 'income' ? '+' : '-'}{formatMoney(item.amount)}
-                    </Text>
-                  </View>
-                );
-              })}
+            <View style={{ alignItems: 'center', paddingVertical: 16 }}>
+              <Ionicons name="wallet-outline" size={36} color={Colors.textLight} />
+              <Text style={[styles.emptyText, { marginTop: 8 }]}>용돈이 설정되지 않았어요</Text>
+              {!myPendingRequest && (
+                <TouchableOpacity style={[styles.requestBtn, { backgroundColor: Colors.primary, marginTop: 12 }]} onPress={() => setShowRequestModal(true)}>
+                  <Ionicons name="hand-right-outline" size={16} color="#FFF" />
+                  <Text style={{ color: '#FFF', fontWeight: '700', marginLeft: 6 }}>용돈 요청하기</Text>
+                </TouchableOpacity>
+              )}
+              {myPendingRequest && (
+                <View style={[styles.pendingBadge, { backgroundColor: '#FFD93D20' }]}>
+                  <Ionicons name="time-outline" size={16} color="#E6A800" />
+                  <Text style={{ color: '#E6A800', fontWeight: '600', marginLeft: 6 }}>요청 대기 중 ({parseInt(myPendingRequest.amount).toLocaleString()}원)</Text>
+                </View>
+              )}
             </View>
           )}
         </View>
-      )}
-      {!selectedDate && (
-        <View style={styles.hintBox}><Ionicons name="hand-left-outline" size={20} color={Colors.textLight} /><Text style={styles.hintText}>날짜를 눌러 상세 내역을 확인하세요</Text></View>
-      )}
-    </>
-  );
 
+        {/* 저축 리포트 */}
+        {hasAllowance && (
+          <View style={styles.chartCard}>
+            <Text style={styles.sectionTitle}>저축 리포트</Text>
+            <View style={{ gap: 10 }}>
+              <View style={[styles.reportItem, { backgroundColor: Colors.background }]}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                  <Ionicons name="calendar-outline" size={16} color="#6C63FF" />
+                  <Text style={{ fontSize: 12, color: Colors.textGray }}>지난달 절약</Text>
+                </View>
+                <Text style={{ fontSize: 20, fontWeight: '800', color: allowanceReport.last.saved >= 0 ? Colors.income : Colors.expense }}>
+                  {allowanceReport.last.saved >= 0 ? '+' : ''}{formatMoney(allowanceReport.last.saved)}
+                </Text>
+              </View>
+              <View style={[styles.reportItem, { backgroundColor: Colors.background }]}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                  <Ionicons name="trending-up" size={16} color={Colors.income} />
+                  <Text style={{ fontSize: 12, color: Colors.textGray }}>월 평균 절약</Text>
+                </View>
+                <Text style={{ fontSize: 20, fontWeight: '800', color: Colors.textBlack }}>{formatMoney(allowanceReport.avgSaved)}</Text>
+              </View>
+              <View style={[styles.reportItem, { backgroundColor: Colors.income + '12', borderWidth: 1, borderColor: Colors.income + '30' }]}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <View>
+                    <Text style={{ fontSize: 12, color: Colors.textGray }}>이 추세로 1년 모으면</Text>
+                    <Text style={{ fontSize: 22, fontWeight: '800', color: Colors.income, marginTop: 4 }}>{formatMoney(allowanceReport.projectedYearly)}</Text>
+                  </View>
+                  <Text style={{ fontSize: 28 }}>🎉</Text>
+                </View>
+              </View>
+            </View>
+          </View>
+        )}
+
+        {/* 이번 달 사용 내역 */}
+        {hasAllowance && (
+          <View style={styles.chartCard}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+              <Text style={styles.sectionTitle}>이번 달 사용 내역</Text>
+              <TouchableOpacity style={[styles.addBtnSmall, { backgroundColor: Colors.primary }]} onPress={() => setShowAddModal(true)}>
+                <Ionicons name="add" size={18} color="#FFF" />
+                <Text style={{ color: '#FFF', fontWeight: '700', fontSize: 12 }}>추가</Text>
+              </TouchableOpacity>
+            </View>
+            {allowanceReport.currentMonthTxs.length === 0 ? (
+              <View style={{ alignItems: 'center', paddingVertical: 24 }}>
+                <Ionicons name="receipt-outline" size={36} color={Colors.textLight} />
+                <Text style={[styles.emptyText, { marginTop: 8 }]}>사용 내역이 없어요</Text>
+              </View>
+            ) : allowanceReport.currentMonthTxs.map((tx) => {
+              const catColor = Colors.category?.[tx.category] || Colors.primary;
+              return (
+                <View key={tx.id} style={styles.catRow}>
+                  <View style={[styles.txIconSmall, { backgroundColor: catColor + '15' }]}>
+                    <Ionicons name={ALL_CATEGORY_ICONS[tx.category] || 'ellipsis-horizontal-outline'} size={16} color={catColor} />
+                  </View>
+                  <Text style={styles.catName}>{tx.memo || ALL_CATEGORY_NAMES[tx.category] || '기타'}</Text>
+                  <Text style={[styles.catAmount, { color: Colors.expense }]}>-{formatMoney(tx.amount)}</Text>
+                </View>
+              );
+            })}
+          </View>
+        )}
+
+        {/* 관리자: 대기 요청 */}
+        {isAdmin && pendingRequests.length > 0 && (
+          <View style={styles.chartCard}>
+            <Text style={styles.sectionTitle}>용돈 요청 ({pendingRequests.length})</Text>
+            {pendingRequests.map((req) => (
+              <View key={req.id} style={[styles.requestCard, { backgroundColor: Colors.background }]}>
+                <Text style={{ fontWeight: '700', color: Colors.textBlack }}>{req.userName}</Text>
+                <Text style={{ fontWeight: '800', color: Colors.primary, marginTop: 2 }}>{parseInt(req.amount).toLocaleString()}원</Text>
+                {req.message ? <Text style={{ fontSize: 12, color: Colors.textGray, marginTop: 4 }}>"{req.message}"</Text> : null}
+                <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
+                  <TouchableOpacity style={[styles.requestBtn, { backgroundColor: Colors.primary }]} onPress={async () => {
+                    const result = await respondToAllowanceRequest(req.id, true, req.amount);
+                    if (result.success) showAlert('승인 완료', `${req.userName}님 용돈 설정됨`);
+                  }}>
+                    <Ionicons name="checkmark" size={14} color="#FFF" />
+                    <Text style={{ color: '#FFF', fontWeight: '700', fontSize: 12, marginLeft: 4 }}>승인</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={[styles.requestBtn, { backgroundColor: Colors.expense + '15' }]} onPress={async () => {
+                    const result = await respondToAllowanceRequest(req.id, false, 0);
+                    if (result.success) showAlert('거절 완료', '요청을 거절했어요.');
+                  }}>
+                    <Ionicons name="close" size={14} color={Colors.expense} />
+                    <Text style={{ color: Colors.expense, fontWeight: '700', fontSize: 12, marginLeft: 4 }}>거절</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))}
+          </View>
+        )}
+
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 12 }}>
+          <Ionicons name="lock-closed" size={14} color={Colors.textLight} />
+          <Text style={{ fontSize: 12, color: Colors.textLight }}>용돈 사용 내역은 나만 볼 수 있어요</Text>
+        </View>
+      </>
+    );
+  };
+
+  // ═══════════════════════════════════
+  // 렌더링 - 자산 탭
+  // ═══════════════════════════════════
+  const renderAsset = () => {
+    const advice = getAssetAdvice();
+    const insights = getInvestmentInsight();
+    return (
+      <>
+        {/* 누적 자산 요약 */}
+        <View style={styles.chartCard}>
+          <Text style={styles.sectionTitle}>누적 자산 현황</Text>
+          <Text style={[styles.totalAssetAmount, { color: Colors.primary }]}>{formatMoney(totalAsset)}</Text>
+
+          {totalAsset > 0 && (
+            <>
+              <View style={[styles.assetBarRow, { marginTop: 16 }]}>
+                {ASSET_FUND_TYPES.map((ft) => {
+                  const amt = accumulatedFunds?.[ft] || 0;
+                  const pct = totalAsset > 0 ? Math.max(Math.round((amt / totalAsset) * 100), 0) : 0;
+                  if (pct === 0) return null;
+                  const info = FUND_TYPE_MAP[ft];
+                  return <View key={ft} style={[styles.assetBar, { flex: pct, backgroundColor: info.color }]}>{pct >= 15 && <Text style={styles.assetBarText}>{info.name} {pct}%</Text>}</View>;
+                })}
+              </View>
+
+              {ASSET_FUND_TYPES.map((ft) => {
+                const amt = accumulatedFunds?.[ft] || 0;
+                const goal = fundGoals[ft] || 0;
+                const info = FUND_TYPE_MAP[ft];
+                const pct = goal > 0 ? Math.min(Math.round((amt / goal) * 100), 100) : 0;
+                return (
+                  <View key={ft} style={styles.assetItem}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <View style={[styles.assetIcon, { backgroundColor: info.color + '15' }]}>
+                        <Ionicons name={info.icon} size={18} color={info.color} />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.assetItemName}>{info.name}</Text>
+                        <Text style={{ fontSize: 12, color: Colors.textGray }}>
+                          {formatMoney(amt)}{goal > 0 ? ` / ${formatMoney(goal)}` : ''}
+                        </Text>
+                      </View>
+                      {goal > 0 && <Text style={[styles.assetPct, { color: pct >= 100 ? Colors.income : info.color }]}>{pct}%</Text>}
+                    </View>
+                    {goal > 0 && (
+                      <View style={styles.assetGoalBar}>
+                        <View style={[styles.assetGoalBarFill, { width: `${pct}%`, backgroundColor: pct >= 100 ? Colors.income : info.color }]} />
+                      </View>
+                    )}
+                  </View>
+                );
+              })}
+            </>
+          )}
+
+          {totalAsset === 0 && (
+            <View style={{ alignItems: 'center', paddingVertical: 16 }}>
+              <Ionicons name="pie-chart-outline" size={40} color={Colors.textLight} />
+              <Text style={[styles.emptyText, { marginTop: 8 }]}>아직 자산 기록이 없어요</Text>
+              <Text style={{ fontSize: 12, color: Colors.textLight, marginTop: 4 }}>지출 추가 시 예적금/투자/비상금으로 분류해보세요</Text>
+            </View>
+          )}
+        </View>
+
+        {/* 월별 자산 추이 */}
+        {assetHistory.length > 0 && (
+          <View style={styles.chartCard}>
+            <Text style={styles.sectionTitle}>월별 자산 투입 추이</Text>
+            {assetHistory.slice(-6).map(([ym, data]) => {
+              const total = data.savings + data.investment + data.emergency;
+              return (
+                <View key={ym} style={styles.assetHistoryRow}>
+                  <Text style={styles.assetHistoryMonth}>{ym.split('-')[1]}월</Text>
+                  <View style={styles.assetHistoryBarBg}>
+                    {ASSET_FUND_TYPES.map((ft) => {
+                      const amt = data[ft] || 0;
+                      const pct = total > 0 ? Math.round((amt / total) * 100) : 0;
+                      if (pct === 0) return null;
+                      return <View key={ft} style={[styles.assetHistoryBar, { flex: pct, backgroundColor: FUND_TYPE_MAP[ft].color }]} />;
+                    })}
+                  </View>
+                  <Text style={styles.assetHistoryAmt}>{formatMoneyShort(total)}</Text>
+                </View>
+              );
+            })}
+            <View style={styles.assetLegendRow}>
+              {ASSET_FUND_TYPES.map((ft) => (
+                <View key={ft} style={styles.assetLegendItem}>
+                  <View style={[styles.assetLegendDot, { backgroundColor: FUND_TYPE_MAP[ft].color }]} />
+                  <Text style={styles.assetLegendText}>{FUND_TYPE_MAP[ft].name}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        )}
+
+        {/* 자산 분배 조언 */}
+        <View style={[styles.chartCard, { backgroundColor: Colors.primary + '08' }]}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+            <Ionicons name={advice.icon} size={22} color={Colors.primary} />
+            <Text style={styles.sectionTitle}>{advice.title}</Text>
+          </View>
+          <Text style={{ fontSize: 14, color: Colors.textDark, lineHeight: 22 }}>{advice.desc}</Text>
+        </View>
+
+        {/* 투자 인사이트 */}
+        {totalAsset > 0 && (
+          <View style={styles.chartCard}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+              <Ionicons name="bulb" size={22} color="#FFD93D" />
+              <Text style={styles.sectionTitle}>투자 인사이트</Text>
+            </View>
+            {insights.map((text, i) => (
+              <View key={i} style={{ flexDirection: 'row', marginBottom: 10, gap: 8 }}>
+                <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: Colors.primary, marginTop: 7 }} />
+                <Text style={{ flex: 1, fontSize: 14, color: Colors.textDark, lineHeight: 22 }}>{text}</Text>
+              </View>
+            ))}
+
+            {/* 추천 자산 배분 */}
+            {totalAsset > 0 && (
+              <View style={[styles.recommendBox, { backgroundColor: Colors.background }]}>
+                <Text style={{ fontSize: 13, fontWeight: '700', color: Colors.textBlack, marginBottom: 10 }}>추천 자산 배분</Text>
+                {[
+                  { name: '예적금', pct: '40-50%', desc: '안정적 수익, 비상 시 유동성', color: FUND_TYPE_MAP.savings.color },
+                  { name: '투자', pct: '30-40%', desc: 'ETF, 펀드 등 분산투자', color: FUND_TYPE_MAP.investment.color },
+                  { name: '비상금', pct: '10-20%', desc: '3-6개월 생활비 확보', color: FUND_TYPE_MAP.emergency.color },
+                ].map((item) => (
+                  <View key={item.name} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8, gap: 8 }}>
+                    <View style={[styles.assetLegendDot, { backgroundColor: item.color }]} />
+                    <Text style={{ fontWeight: '600', color: Colors.textBlack, width: 50 }}>{item.name}</Text>
+                    <Text style={{ fontWeight: '700', color: item.color, width: 50 }}>{item.pct}</Text>
+                    <Text style={{ fontSize: 12, color: Colors.textGray, flex: 1 }}>{item.desc}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
+          </View>
+        )}
+      </>
+    );
+  };
+
+  // ═══════════════════════════════════
+  // 메인 렌더
+  // ═══════════════════════════════════
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" />
@@ -491,26 +897,19 @@ export default function InsightsScreen() {
           <Text style={styles.headerTitle}>분석</Text>
           <Text style={styles.headerSubtitle}>{currentWallet?.name || '가계부'}</Text>
 
-          {/* 세그먼트 토글 */}
           <View style={styles.segmentRow}>
-            <TouchableOpacity style={[styles.segmentBtn, tab === 'stats' && styles.segmentBtnActive]} onPress={() => setTab('stats')}>
-              <Ionicons name="pie-chart" size={15} color={tab === 'stats' ? Colors.primary : 'rgba(255,255,255,0.7)'} />
-              <Text style={[styles.segmentText, tab === 'stats' && styles.segmentTextActive]}>통계</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.segmentBtn, tab === 'calendar' && styles.segmentBtnActive]} onPress={() => setTab('calendar')}>
-              <Ionicons name="calendar" size={15} color={tab === 'calendar' ? Colors.primary : 'rgba(255,255,255,0.7)'} />
-              <Text style={[styles.segmentText, tab === 'calendar' && styles.segmentTextActive]}>캘린더</Text>
-            </TouchableOpacity>
+            {[
+              { id: 'stats', icon: 'pie-chart', label: '통계' },
+              { id: 'allowance', icon: 'wallet', label: '용돈' },
+              { id: 'asset', icon: 'trending-up', label: '자산' },
+            ].map((t) => (
+              <TouchableOpacity key={t.id} style={[styles.segmentBtn, tab === t.id && styles.segmentBtnActive]} onPress={() => setTab(t.id)}>
+                <Ionicons name={t.icon} size={15} color={tab === t.id ? Colors.primary : 'rgba(255,255,255,0.7)'} />
+                <Text style={[styles.segmentText, tab === t.id && styles.segmentTextActive]}>{t.label}</Text>
+              </TouchableOpacity>
+            ))}
           </View>
 
-          {/* 월 네비게이션 */}
-          <View style={styles.monthNav}>
-            <TouchableOpacity onPress={() => changeMonth(-1)} style={styles.monthNavBtn}><Ionicons name="chevron-back" size={20} color="#FFFFFF" /></TouchableOpacity>
-            <Text style={styles.monthNavText}>{ymLabel}</Text>
-            <TouchableOpacity onPress={() => changeMonth(1)} style={styles.monthNavBtn}><Ionicons name="chevron-forward" size={20} color="#FFFFFF" /></TouchableOpacity>
-          </View>
-
-          {/* 월간 요약 */}
           <View style={styles.monthSummary}>
             <View style={styles.monthSummaryItem}>
               <Ionicons name="trending-up" size={16} color="#A8F0C6" />
@@ -527,9 +926,49 @@ export default function InsightsScreen() {
         </LinearGradient>
 
         <View style={styles.content}>
-          {tab === 'stats' ? renderStats() : renderCalendar()}
+          {tab === 'stats' && renderStats()}
+          {tab === 'allowance' && renderAllowance()}
+          {tab === 'asset' && renderAsset()}
         </View>
       </ScrollView>
+
+      {/* 용돈 지출 추가 모달 */}
+      <Modal visible={showAddModal} animationType="slide" transparent>
+        <View style={styles.modalOverlay}><View style={styles.modalContent}>
+          <Text style={styles.modalTitle}>용돈 사용 추가</Text>
+          <Text style={{ fontSize: 13, color: Colors.textGray, marginBottom: 12 }}>카테고리</Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+            {EXPENSE_CATEGORIES.map((cat) => {
+              const catColor = Colors.category?.[cat.id] || Colors.primary;
+              return (
+                <TouchableOpacity key={cat.id} style={[styles.catChip, selectedCategory === cat.id && { backgroundColor: catColor + '20', borderColor: catColor }]} onPress={() => setSelectedCategory(cat.id)}>
+                  <Ionicons name={cat.icon} size={16} color={selectedCategory === cat.id ? catColor : Colors.textGray} />
+                  <Text style={{ fontSize: 12, fontWeight: '600', color: selectedCategory === cat.id ? catColor : Colors.textGray }}>{cat.name}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+          <TextInput style={styles.modalInput} placeholder="금액" placeholderTextColor={Colors.textLight} keyboardType="numeric" value={expenseAmount} onChangeText={(t) => setExpenseAmount(formatAmountInput(t))} />
+          <TextInput style={styles.modalInput} placeholder="메모 (선택)" placeholderTextColor={Colors.textLight} value={expenseDesc} onChangeText={setExpenseDesc} />
+          <View style={styles.modalBtns}>
+            <TouchableOpacity style={styles.modalCancelBtn} onPress={() => { setShowAddModal(false); setSelectedCategory(null); setExpenseAmount(''); setExpenseDesc(''); }}><Text style={styles.modalCancelText}>취소</Text></TouchableOpacity>
+            <TouchableOpacity style={styles.modalSaveBtn} onPress={handleAddExpense}><Text style={styles.modalSaveText}>추가</Text></TouchableOpacity>
+          </View>
+        </View></View>
+      </Modal>
+
+      {/* 용돈 요청 모달 */}
+      <Modal visible={showRequestModal} animationType="slide" transparent>
+        <View style={styles.modalOverlay}><View style={styles.modalContent}>
+          <Text style={styles.modalTitle}>용돈 요청하기</Text>
+          <TextInput style={[styles.modalInput, { fontSize: 20, fontWeight: '700', textAlign: 'center' }]} placeholder="희망 금액" placeholderTextColor={Colors.textLight} keyboardType="numeric" value={requestAmount} onChangeText={(t) => setRequestAmount(formatAmountInput(t))} />
+          <TextInput style={styles.modalInput} placeholder="메시지 (선택)" placeholderTextColor={Colors.textLight} value={requestMessage} onChangeText={setRequestMessage} maxLength={50} />
+          <View style={styles.modalBtns}>
+            <TouchableOpacity style={styles.modalCancelBtn} onPress={() => { setShowRequestModal(false); setRequestAmount(''); setRequestMessage(''); }}><Text style={styles.modalCancelText}>취소</Text></TouchableOpacity>
+            <TouchableOpacity style={styles.modalSaveBtn} onPress={handleRequestAllowance}><Text style={styles.modalSaveText}>요청</Text></TouchableOpacity>
+          </View>
+        </View></View>
+      </Modal>
     </View>
   );
 }
@@ -539,42 +978,31 @@ const getStyles = (Colors) => StyleSheet.create({
   header: { paddingTop: Platform.OS === 'ios' ? 60 : 40, paddingBottom: 20, paddingHorizontal: 20, borderBottomLeftRadius: 30, borderBottomRightRadius: 30 },
   headerTitle: { fontSize: 26, fontWeight: '800', color: '#FFFFFF', letterSpacing: -0.5 },
   headerSubtitle: { fontSize: 14, color: 'rgba(255,255,255,0.75)', marginTop: 4 },
-
-  // 세그먼트
   segmentRow: { flexDirection: 'row', backgroundColor: 'rgba(0,0,0,0.2)', borderRadius: 12, padding: 3, marginTop: 16 },
   segmentBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 10 },
   segmentBtnActive: { backgroundColor: '#FFFFFF' },
   segmentText: { fontSize: 14, fontWeight: '600', color: 'rgba(255,255,255,0.7)' },
   segmentTextActive: { color: Colors.primary },
-
-  // 월 네비
-  monthNav: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 16, marginTop: 14 },
-  monthNavBtn: { padding: 6, backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 10 },
-  monthNavText: { fontSize: 17, fontWeight: '700', color: '#FFFFFF' },
-
-  // 월간 요약
+  monthNav: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 16, marginBottom: 12 },
+  monthNavBtn: { padding: 6, backgroundColor: Colors.primary + '12', borderRadius: 10 },
+  monthNavText: { fontSize: 17, fontWeight: '700', color: Colors.textBlack },
   monthSummary: { flexDirection: 'row', backgroundColor: 'rgba(0,0,0,0.15)', borderRadius: 14, padding: 14, marginTop: 12 },
   monthSummaryItem: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
   monthSummaryDivider: { width: 1, backgroundColor: 'rgba(255,255,255,0.2)' },
   monthSummaryLabel: { fontSize: 12, color: 'rgba(255,255,255,0.7)' },
   monthSummaryValue: { fontSize: 14, fontWeight: '700', color: '#FFFFFF' },
-
   content: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 120 },
-
-  // ═══ 통계 탭 ═══
+  // 통계
   summaryRow: { flexDirection: 'row', gap: 12, marginBottom: 12 },
-  summaryCard: { flex: 1, backgroundColor: Colors.surface, borderRadius: 14, padding: 16, borderLeftWidth: 4, borderWidth: 1, borderColor: Colors.border, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 8, elevation: 2 },
+  summaryCard: { flex: 1, backgroundColor: Colors.surface, borderRadius: 14, padding: 16, borderLeftWidth: 4, borderWidth: 1, borderColor: Colors.border },
   summaryLabel: { fontSize: 13, color: Colors.textGray },
   summaryAmount: { fontSize: 18, fontWeight: '800', marginTop: 4 },
   changeRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6 },
   changeText: { fontSize: 11, fontWeight: '600' },
-
   balanceCard: { backgroundColor: Colors.surface, borderRadius: 14, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: Colors.border, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   balanceLabel: { fontSize: 14, fontWeight: '600', color: Colors.textDark },
   balanceAmount: { fontSize: 20, fontWeight: '800' },
-
   sectionTitle: { fontSize: 16, fontWeight: '800', color: Colors.textBlack, marginBottom: 14, letterSpacing: -0.3 },
-
   fundCard: { backgroundColor: Colors.surface, borderRadius: 16, padding: 20, marginBottom: 12, borderWidth: 1, borderColor: Colors.border },
   fundBarRow: { flexDirection: 'row', height: 28, borderRadius: 14, overflow: 'hidden', marginBottom: 14, gap: 2 },
   fundBar: { justifyContent: 'center', alignItems: 'center' },
@@ -584,8 +1012,6 @@ const getStyles = (Colors) => StyleSheet.create({
   fundLegendDot: { width: 8, height: 8, borderRadius: 4 },
   fundLegendLabel: { fontSize: 13, color: Colors.textGray },
   fundLegendValue: { fontSize: 13, fontWeight: '600', color: Colors.textDark },
-
-  // 바 차트
   chartCard: { backgroundColor: Colors.surface, borderRadius: 18, padding: 20, marginBottom: 12, borderWidth: 1, borderColor: Colors.border },
   barChartScroll: { marginBottom: 4 },
   barChartContainer: { flexDirection: 'row', alignItems: 'flex-end', gap: 4, paddingBottom: 4, minHeight: 110 },
@@ -594,64 +1020,71 @@ const getStyles = (Colors) => StyleSheet.create({
   bar: { width: 14, borderRadius: 4, minHeight: 0 },
   barValue: { fontSize: 7, color: Colors.textGray, marginBottom: 2, fontWeight: '600' },
   barLabel: { fontSize: 9, color: Colors.textLight, marginTop: 4 },
-
-  // 도넛
   donutCenter: { alignItems: 'center', justifyContent: 'center', marginBottom: 20 },
   donutCenterText: { position: 'absolute', alignItems: 'center' },
   donutCenterLabel: { fontSize: 12, color: Colors.textGray },
   donutCenterAmount: { fontSize: 18, fontWeight: '800', color: Colors.textBlack },
-
   catRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 11, borderBottomWidth: 1, borderBottomColor: Colors.divider, gap: 8 },
   catDot: { width: 10, height: 10, borderRadius: 5 },
   catName: { flex: 1, fontSize: 14, fontWeight: '600', color: Colors.textDark },
-  catFundSplit: { flexDirection: 'row', gap: 2 },
-  catFundDot: { width: 6, height: 6, borderRadius: 3 },
   catAmount: { fontSize: 14, fontWeight: '700', color: Colors.textBlack },
   catPct: { fontSize: 13, color: Colors.textGray, width: 40, textAlign: 'right' },
-
+  txIconSmall: { width: 32, height: 32, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
   emptyCard: { alignItems: 'center', paddingVertical: 50, backgroundColor: Colors.surface, borderRadius: 18, borderWidth: 1, borderColor: Colors.border, gap: 12 },
-  emptyText: { fontSize: 14, color: Colors.textGray },
-
-  // ═══ 캘린더 탭 ═══
-  calendarCard: { backgroundColor: Colors.surface, borderRadius: 18, padding: 6, marginBottom: 8, borderWidth: 1, borderColor: Colors.border, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 8, elevation: 3 },
+  emptyText: { fontSize: 14, color: Colors.textGray, textAlign: 'center' },
+  // 캘린더
   dayContainer: { alignItems: 'center', justifyContent: 'flex-start', width: 44, minHeight: 56, paddingTop: 4, paddingBottom: 2, borderRadius: 10, borderWidth: 1, borderColor: 'transparent' },
   dayText: { fontSize: 14, fontWeight: '500', color: Colors.textBlack },
   dayAmounts: { alignItems: 'center', marginTop: 2 },
   dayAmountsPlaceholder: { height: 20 },
   dayIncome: { fontSize: 8, fontWeight: '700', color: Colors.income, lineHeight: 11 },
   dayExpense: { fontSize: 8, fontWeight: '700', color: Colors.expense, lineHeight: 11 },
-
-  legendRow: { flexDirection: 'row', justifyContent: 'center', gap: 16, paddingVertical: 8, marginBottom: 8 },
-  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  legendDot: { width: 8, height: 8, borderRadius: 4 },
-  legendText: { fontSize: 11, color: Colors.textGray },
-
-  dayDetail: { backgroundColor: Colors.surface, borderRadius: 18, padding: 20, borderWidth: 1, borderColor: Colors.border, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 8, elevation: 3 },
-  dayDetailHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
-  dayDetailTitle: { fontSize: 17, fontWeight: '800', color: Colors.textBlack, letterSpacing: -0.3 },
-  dayDetailNet: { fontSize: 15, fontWeight: '700' },
-
-  daySummary: { flexDirection: 'row', gap: 12, marginBottom: 16, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: Colors.divider },
-  daySummaryItem: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: Colors.background, borderRadius: 12, padding: 12 },
-  daySummaryIcon: { width: 32, height: 32, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
-  daySummaryLabel: { fontSize: 11, color: Colors.textGray },
-  daySummaryAmountText: { fontSize: 16, fontWeight: '700', marginTop: 1 },
-
-  noDataBox: { alignItems: 'center', paddingVertical: 30, gap: 8 },
-  noDataText: { fontSize: 14, color: Colors.textLight },
-
-  txList: { marginTop: 2 },
-  txListTitle: { fontSize: 14, fontWeight: '700', color: Colors.textGray, marginBottom: 10 },
-  txItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: Colors.divider, gap: 10 },
-  txIcon: { width: 38, height: 38, borderRadius: 11, justifyContent: 'center', alignItems: 'center' },
-  txInfo: { flex: 1 },
-  txTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  txTitle: { fontSize: 14, fontWeight: '600', color: Colors.textBlack, flexShrink: 1 },
-  fundTag: { flexDirection: 'row', alignItems: 'center', gap: 2, borderRadius: 5, paddingHorizontal: 5, paddingVertical: 2 },
-  fundTagText: { fontSize: 9, fontWeight: '700' },
-  txMember: { fontSize: 12, color: Colors.textGray, marginTop: 2 },
-  txAmount: { fontSize: 15, fontWeight: '700' },
-
-  hintBox: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 24 },
-  hintText: { fontSize: 14, color: Colors.textLight },
+  daySummary: { flexDirection: 'row', gap: 10, marginBottom: 12 },
+  daySummaryItem: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 10 },
+  daySummaryAmt: { fontSize: 14, fontWeight: '700' },
+  // 용돈
+  allowSummaryRow: { flexDirection: 'row', gap: 8, marginBottom: 12 },
+  allowSummaryItem: { flex: 1, alignItems: 'center', backgroundColor: Colors.background, borderRadius: 12, padding: 12 },
+  allowSummaryLabel: { fontSize: 11, color: Colors.textGray, marginBottom: 4 },
+  allowSummaryVal: { fontSize: 16, fontWeight: '800' },
+  allowBar: { height: 8, backgroundColor: Colors.background, borderRadius: 4, overflow: 'hidden' },
+  allowBarFill: { height: 8, borderRadius: 4 },
+  allowBarText2: { fontSize: 12, textAlign: 'right', marginTop: 4 },
+  reportItem: { borderRadius: 14, padding: 16 },
+  requestCard: { borderRadius: 12, padding: 14, marginBottom: 8 },
+  requestBtn: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8 },
+  pendingBadge: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, marginTop: 8 },
+  addBtnSmall: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
+  catChip: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 10, borderWidth: 1.5, borderColor: Colors.border },
+  // 자산
+  totalAssetAmount: { fontSize: 28, fontWeight: '800', textAlign: 'center', marginTop: -6, marginBottom: 4 },
+  assetBarRow: { flexDirection: 'row', height: 24, borderRadius: 12, overflow: 'hidden', gap: 2, marginBottom: 16 },
+  assetBar: { justifyContent: 'center', alignItems: 'center' },
+  assetBarText: { fontSize: 10, fontWeight: '700', color: '#FFF' },
+  assetItem: { marginBottom: 14 },
+  assetIcon: { width: 36, height: 36, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
+  assetItemName: { fontSize: 15, fontWeight: '600', color: Colors.textBlack },
+  assetPct: { fontSize: 16, fontWeight: '800' },
+  assetGoalBar: { height: 6, backgroundColor: Colors.background, borderRadius: 3, marginTop: 8, overflow: 'hidden' },
+  assetGoalBarFill: { height: 6, borderRadius: 3 },
+  assetHistoryRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
+  assetHistoryMonth: { width: 30, fontSize: 12, fontWeight: '600', color: Colors.textGray },
+  assetHistoryBarBg: { flex: 1, flexDirection: 'row', height: 18, borderRadius: 9, overflow: 'hidden', backgroundColor: Colors.background, gap: 1 },
+  assetHistoryBar: { height: 18 },
+  assetHistoryAmt: { width: 50, fontSize: 11, fontWeight: '600', color: Colors.textGray, textAlign: 'right' },
+  assetLegendRow: { flexDirection: 'row', justifyContent: 'center', gap: 16, marginTop: 10 },
+  assetLegendItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  assetLegendDot: { width: 8, height: 8, borderRadius: 4 },
+  assetLegendText: { fontSize: 11, color: Colors.textGray },
+  recommendBox: { borderRadius: 14, padding: 16, marginTop: 14 },
+  // 모달
+  modalOverlay: { flex: 1, backgroundColor: Colors.modalOverlay, justifyContent: 'flex-end' },
+  modalContent: { backgroundColor: Colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 40 },
+  modalTitle: { fontSize: 20, fontWeight: 'bold', color: Colors.textBlack, marginBottom: 16 },
+  modalInput: { backgroundColor: Colors.background, borderRadius: 12, padding: 14, fontSize: 16, color: Colors.textBlack, marginBottom: 12 },
+  modalBtns: { flexDirection: 'row', gap: 12, marginTop: 10 },
+  modalCancelBtn: { flex: 1, backgroundColor: Colors.background, borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
+  modalCancelText: { fontSize: 15, fontWeight: '600', color: Colors.textGray },
+  modalSaveBtn: { flex: 1, backgroundColor: Colors.primary, borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
+  modalSaveText: { fontSize: 15, fontWeight: 'bold', color: '#FFF' },
 });
