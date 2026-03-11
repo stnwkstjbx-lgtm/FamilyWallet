@@ -7,6 +7,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../constants/ThemeContext';
 import { useAuth } from '../constants/AuthContext';
+import { MIN_PASSWORD_LENGTH } from '../constants/limits';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -15,9 +16,16 @@ const showAlert = (title, message) => {
   else Alert.alert(title, message);
 };
 
+const validatePassword = (pw) => {
+  if (pw.length < MIN_PASSWORD_LENGTH) return `비밀번호는 ${MIN_PASSWORD_LENGTH}자 이상이어야 합니다.`;
+  if (!/[A-Za-z]/.test(pw)) return '비밀번호에 영문자를 포함해 주세요.';
+  if (!/[0-9]/.test(pw)) return '비밀번호에 숫자를 포함해 주세요.';
+  return null;
+};
+
 export default function LoginScreen({ initialMode }) {
   const { colors: Colors } = useTheme();
-  const { register, login, loginWithGoogle, loginWithApple } = useAuth();
+  const { register, login, loginWithGoogle, loginWithApple, resetPassword } = useAuth();
   const styles = getStyles(Colors);
 
   // initialMode가 'signup'이면 회원가입 탭으로 시작
@@ -34,6 +42,10 @@ export default function LoginScreen({ initialMode }) {
     setError('');
     if (!email.trim() || !password.trim()) { setError('이메일과 비밀번호를 입력해 주세요.'); return; }
     if (!isLogin && !name.trim()) { setError('이름을 입력해 주세요.'); return; }
+    if (!isLogin) {
+      const pwError = validatePassword(password);
+      if (pwError) { setError(pwError); return; }
+    }
 
     setLoading(true);
     const result = isLogin
@@ -56,6 +68,22 @@ export default function LoginScreen({ initialMode }) {
     const result = await loginWithApple();
     setSocialLoading(null);
     if (!result.success && result.message) setError(result.message);
+  };
+
+  const handleResetPassword = async () => {
+    if (!email.trim()) {
+      setError('비밀번호를 재설정할 이메일을 입력해 주세요.');
+      return;
+    }
+    setLoading(true);
+    const result = await resetPassword(email.trim());
+    setLoading(false);
+    if (result.success) {
+      setError('');
+      showAlert('이메일 발송 완료', '비밀번호 재설정 링크가 이메일로 발송되었습니다. 메일함을 확인해 주세요.');
+    } else {
+      setError(result.message);
+    }
   };
 
   return (
@@ -136,7 +164,7 @@ export default function LoginScreen({ initialMode }) {
 
               <View style={styles.inputGroup}>
                 <Ionicons name="lock-closed-outline" size={18} color={Colors.textGray} style={styles.inputIcon} />
-                <TextInput style={styles.input} placeholder="비밀번호 (6자 이상)" placeholderTextColor={Colors.textLight}
+                <TextInput style={styles.input} placeholder={isLogin ? '비밀번호' : `비밀번호 (영문+숫자 ${MIN_PASSWORD_LENGTH}자 이상)`} placeholderTextColor={Colors.textLight}
                   value={password} onChangeText={setPassword} secureTextEntry={!showPassword} />
                 <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={styles.eyeBtn}>
                   <Ionicons name={showPassword ? 'eye-outline' : 'eye-off-outline'} size={20} color={Colors.textGray} />
@@ -158,6 +186,13 @@ export default function LoginScreen({ initialMode }) {
                   )}
                 </LinearGradient>
               </TouchableOpacity>
+
+              {/* 비밀번호 찾기 (로그인 모드일 때만) */}
+              {isLogin && (
+                <TouchableOpacity style={styles.forgotBtn} onPress={handleResetPassword}>
+                  <Text style={styles.forgotText}>비밀번호를 잊으셨나요?</Text>
+                </TouchableOpacity>
+              )}
             </View>
 
             {/* 구분선 */}
@@ -279,4 +314,6 @@ const getStyles = (Colors) => StyleSheet.create({
   switchRow: { alignItems: 'center', paddingVertical: 16 },
   switchText: { fontSize: 14, color: Colors.textGray },
   switchLink: { color: Colors.primary, fontWeight: '700' },
+  forgotBtn: { alignItems: 'center', marginTop: 12 },
+  forgotText: { fontSize: 13, color: Colors.primary, fontWeight: '600' },
 });

@@ -30,9 +30,11 @@ export default function WalletSetupScreen() {
   const { createWallet, joinWallet } = useWallet();
   const styles = getStyles(Colors);
 
-  const [mode, setMode] = useState(null); // null, 'create', 'join'
+  const [mode, setMode] = useState(null); // null, 'create', 'join', 'nickname'
   const [walletName, setWalletName] = useState('');
+  const [nickname, setNickname] = useState('');
   const [inviteCode, setInviteCode] = useState('');
+  const [flowType, setFlowType] = useState(null); // 'create' or 'join'
   const [loading, setLoading] = useState(false);
 
   // URL에서 초대 코드 자동 감지
@@ -47,36 +49,54 @@ export default function WalletSetupScreen() {
     }
   }, []);
 
-  const handleCreate = async () => {
+  // Step 1 → 닉네임 단계로 이동
+  const handleCreateNext = () => {
     if (!walletName.trim()) {
       showAlert('알림', '가계부 이름을 입력해 주세요!');
       return;
     }
-    setLoading(true);
-    const result = await createWallet(walletName.trim());
-    setLoading(false);
-
-    if (result.success) {
-      showAlert('🎉 가계부 생성 완료!', `"${walletName.trim()}" 가계부가 만들어졌습니다!\n\n초대 코드: ${result.inviteCode}\n\n가족에게 초대 링크를 공유하세요!`);
-    } else {
-      showAlert('오류', result.message);
-    }
+    setFlowType('create');
+    setMode('nickname');
   };
 
-  const handleJoin = async () => {
+  const handleJoinNext = () => {
     if (!inviteCode.trim() || inviteCode.trim().length < 6) {
       showAlert('알림', '올바른 초대 코드를 입력해 주세요!');
       return;
     }
-    setLoading(true);
-    const result = await joinWallet(inviteCode.trim());
-    setLoading(false);
+    setFlowType('join');
+    setMode('nickname');
+  };
 
-    if (result.success) {
-      showAlert('🎉 합류 완료!', `"${result.walletName}" 가계부에 합류했습니다!`);
-    } else {
-      showAlert('오류', result.message);
+  // Step 2: 닉네임 입력 후 최종 생성/합류
+  const handleNicknameConfirm = async () => {
+    if (!nickname.trim()) {
+      showAlert('알림', '닉네임을 입력해 주세요!');
+      return;
     }
+    setLoading(true);
+    if (flowType === 'create') {
+      const result = await createWallet(walletName.trim(), nickname.trim());
+      setLoading(false);
+      if (result.success) {
+        showAlert('🎉 가계부 생성 완료!', `"${walletName.trim()}" 가계부가 만들어졌습니다!\n\n초대 코드: ${result.inviteCode}\n\n가족에게 초대 링크를 공유하세요!`);
+      } else {
+        showAlert('오류', result.message);
+      }
+    } else {
+      const result = await joinWallet(inviteCode.trim(), nickname.trim());
+      setLoading(false);
+      if (result.success) {
+        showAlert('🎉 합류 완료!', `"${result.walletName}" 가계부에 합류했습니다!`);
+      } else {
+        showAlert('오류', result.message);
+      }
+    }
+  };
+
+  const handleNicknameBack = () => {
+    setNickname('');
+    setMode(flowType); // 'create' or 'join'으로 돌아가기
   };
 
   const userName = userProfile?.name || user?.displayName || '사용자';
@@ -144,9 +164,8 @@ export default function WalletSetupScreen() {
                 />
 
                 <TouchableOpacity
-                  style={[styles.formButton, loading && { opacity: 0.6 }]}
-                  onPress={handleCreate}
-                  disabled={loading}
+                  style={styles.formButton}
+                  onPress={handleCreateNext}
                 >
                   <LinearGradient
                     colors={[Colors.gradientStart, Colors.primary]}
@@ -154,8 +173,8 @@ export default function WalletSetupScreen() {
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 0 }}
                   >
-                    <Ionicons name="checkmark-circle" size={20} color="#FFFFFF" />
-                    <Text style={styles.formButtonText}>{loading ? '생성 중...' : '가계부 만들기'}</Text>
+                    <Ionicons name="arrow-forward-circle" size={20} color="#FFFFFF" />
+                    <Text style={styles.formButtonText}>다음</Text>
                   </LinearGradient>
                 </TouchableOpacity>
               </View>
@@ -186,9 +205,8 @@ export default function WalletSetupScreen() {
                 />
 
                 <TouchableOpacity
-                  style={[styles.formButton, loading && { opacity: 0.6 }]}
-                  onPress={handleJoin}
-                  disabled={loading}
+                  style={styles.formButton}
+                  onPress={handleJoinNext}
                 >
                   <LinearGradient
                     colors={[Colors.income, '#1FA870']}
@@ -196,8 +214,55 @@ export default function WalletSetupScreen() {
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 0 }}
                   >
-                    <Ionicons name="enter-outline" size={20} color="#FFFFFF" />
-                    <Text style={styles.formButtonText}>{loading ? '합류 중...' : '가계부 합류하기'}</Text>
+                    <Ionicons name="arrow-forward-circle" size={20} color="#FFFFFF" />
+                    <Text style={styles.formButtonText}>다음</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+
+          {/* 닉네임 입력 (Step 2) */}
+          {mode === 'nickname' && (
+            <View style={styles.formContainer}>
+              <TouchableOpacity style={styles.backBtn} onPress={handleNicknameBack}>
+                <Ionicons name="arrow-back" size={20} color={Colors.primary} />
+                <Text style={styles.backBtnText}>이전 단계</Text>
+              </TouchableOpacity>
+
+              <View style={styles.formCard}>
+                <Ionicons name="person-circle" size={36} color={Colors.primary} />
+                <Text style={styles.formTitle}>닉네임 설정</Text>
+                <Text style={styles.formDesc}>이 가계부에서 사용할 닉네임을 입력하세요</Text>
+
+                <TextInput
+                  style={styles.formInput}
+                  placeholder="예: 엄마, 아빠, 첫째"
+                  placeholderTextColor={Colors.textLight}
+                  value={nickname}
+                  onChangeText={setNickname}
+                  maxLength={10}
+                  autoFocus
+                />
+
+                <TouchableOpacity
+                  style={[styles.formButton, loading && { opacity: 0.6 }]}
+                  onPress={handleNicknameConfirm}
+                  disabled={loading}
+                >
+                  <LinearGradient
+                    colors={flowType === 'create' ? [Colors.gradientStart, Colors.primary] : [Colors.income, '#1FA870']}
+                    style={styles.formButtonGradient}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                  >
+                    <Ionicons name="checkmark-circle" size={20} color="#FFFFFF" />
+                    <Text style={styles.formButtonText}>
+                      {loading
+                        ? (flowType === 'create' ? '생성 중...' : '합류 중...')
+                        : (flowType === 'create' ? '가계부 만들기' : '가계부 합류하기')
+                      }
+                    </Text>
                   </LinearGradient>
                 </TouchableOpacity>
               </View>

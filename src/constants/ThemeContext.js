@@ -10,25 +10,29 @@ const lightColors = {
   primary: '#5B6BF5',
   primaryDark: '#3A4BD4',
   primaryLight: '#B8C4FF',
-  background: '#F5F6FA',
+  background: '#F0F1F5',
   cardBackground: 'rgba(255, 255, 255, 0.75)',
   white: '#FFFFFF',
   surface: '#FFFFFF',
+  border: '#D8DCE4',
+  divider: '#E5E8ED',
   textBlack: '#191F28',
   textDark: '#333D4B',
-  textGray: '#8B95A1',
-  textLight: '#B0B8C1',
-  income: '#2BC48A',
-  expense: '#F45452',
-  warning: '#FFB800',
+  textGray: '#6B7684',
+  textLight: '#A0A8B4',
+  income: '#2563EB',
+  expense: '#DC2626',
+  warning: '#D97706',
+  personal: '#E85D04',
   tabBar: '#FFFFFF',
-  tabBarBorder: 'transparent',
+  tabBarBorder: '#E5E8ED',
   modalOverlay: 'rgba(0,0,0,0.4)',
+  shadow: { color: '#000', opacity: 0.1 },
   category: {
-    food: '#FF6B6B', transport: '#4ECDC4', shopping: '#FFE66D', health: '#2BC48A',
-    education: '#5B6BF5', entertainment: '#FF8A5C', housing: '#96BAFF', etc: '#B0B8C1',
-    salary: '#2BC48A', bonus: '#4ECDC4', sebaetdon: '#FFD700',
-    pocketmoney: '#FF8A5C', interest: '#5B6BF5', sidejob: '#9B59B6', incomeEtc: '#B0B8C1',
+    food: '#DC2626', transport: '#0D9488', shopping: '#CA8A04', health: '#059669',
+    education: '#4F46E5', entertainment: '#EA580C', housing: '#2563EB', etc: '#6B7280',
+    salary: '#2563EB', bonus: '#0D9488', sebaetdon: '#CA8A04',
+    pocketmoney: '#EA580C', interest: '#4F46E5', sidejob: '#7C3AED', incomeEtc: '#6B7280',
   },
 };
 
@@ -43,6 +47,8 @@ const darkColors = {
   cardBackground: 'rgba(22, 27, 34, 0.9)',
   white: '#161B22',
   surface: '#1C2128',
+  border: '#30363D',
+  divider: '#21262D',
   textBlack: '#E6EDF3',
   textDark: '#C9D1D9',
   textGray: '#8B949E',
@@ -50,9 +56,11 @@ const darkColors = {
   income: '#3DDC97',
   expense: '#FF6B6B',
   warning: '#FFD55A',
+  personal: '#FF8A5C',
   tabBar: '#161B22',
   tabBarBorder: '#30363D',
   modalOverlay: 'rgba(0,0,0,0.7)',
+  shadow: { color: '#000', opacity: 0.3 },
   category: {
     food: '#FF6B6B', transport: '#4ECDC4', shopping: '#FFE66D', health: '#3DDC97',
     education: '#7C83FF', entertainment: '#FF8A5C', housing: '#96BAFF', etc: '#8B949E',
@@ -79,7 +87,9 @@ export function ThemeProvider({ children }) {
             setIsDark(userDoc.data().isDark);
           }
         }
-      } catch (error) {}
+      } catch (error) {
+        if (__DEV__) console.warn('테마 로드 실패:', error);
+      }
       setThemeLoaded(true);
     };
     loadTheme();
@@ -101,7 +111,9 @@ export function ThemeProvider({ children }) {
       if (currentUser) {
         await updateDoc(doc(db, 'users', currentUser.uid), { isDark: newValue });
       }
-    } catch (error) {}
+    } catch (error) {
+      if (__DEV__) console.warn('테마 저장 실패:', error);
+    }
   };
 
   const colors = isDark ? darkColors : lightColors;

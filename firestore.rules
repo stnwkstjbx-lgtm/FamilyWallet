@@ -1,0 +1,111 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ══════════════════════════════════════
+    // 헬퍼 함수
+    // ══════════════════════════════════════
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    function isWalletMember(walletId) {
+      return isSignedIn()
+        && get(/databases/$(database)/documents/wallets/$(walletId)).data.members[request.auth.uid] != null;
+    }
+    function isWalletAdmin(walletId) {
+      return isSignedIn()
+        && get(/databases/$(database)/documents/wallets/$(walletId)).data.members[request.auth.uid].role == 'admin';
+    }
+    function validAmount(val) {
+      return val is int && val > 0 && val <= 999999999;
+    }
+
+    // ══════════════════════════════════════
+    // 사용자 프로필
+    // ══════════════════════════════════════
+    match /users/{userId} {
+      allow read, write: if isSignedIn() && request.auth.uid == userId;
+    }
+
+    // ══════════════════════════════════════
+    // 가계부 (wallets)
+    // ══════════════════════════════════════
+    match /wallets/{walletId} {
+      // 멤버만 읽기
+      allow read: if isSignedIn()
+        && resource.data.members[request.auth.uid] != null;
+
+      // 생성: 로그인 사용자 + 필수 필드
+      allow create: if isSignedIn()
+        && request.resource.data.keys().hasAll(['name', 'members', 'inviteCode'])
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 30;
+
+      // 수정: 멤버만 + 보호 필드 검증
+      allow update: if isSignedIn()
+        && resource.data.members[request.auth.uid] != null
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0;
+
+      // 삭제: 관리자만
+      allow delete: if isSignedIn()
+        && resource.data.members[request.auth.uid].role == 'admin';
+
+      // 초대코드 조회용 (합류 시)
+      allow list: if isSignedIn();
+
+      // ── 트랜잭션 (서브컬렉션) ──
+      match /transactions/{txId} {
+        allow read: if isWalletMember(walletId);
+
+        // 멤버만 생성 + 데이터 검증
+        allow create: if isWalletMember(walletId)
+          && request.resource.data.keys().hasAll(['type', 'amount', 'date'])
+          && request.resource.data.type in ['income', 'expense']
+          && validAmount(request.resource.data.amount);
+
+        // 관리자만 수정/삭제
+        allow update, delete: if isWalletAdmin(walletId);
+      }
+
+      // ── 고정 지출/수입 (서브컬렉션) ──
+      match /fixedExpenses/{fixedId} {
+        allow read: if isWalletMember(walletId);
+
+        allow create, update: if isWalletAdmin(walletId)
+          && request.resource.data.keys().hasAll(['name', 'amount', 'day', 'type'])
+          && request.resource.data.type in ['income', 'expense']
+          && validAmount(request.resource.data.amount)
+          && request.resource.data.day is int
+          && request.resource.data.day >= 1
+          && request.resource.data.day <= 31;
+
+        allow delete: if isWalletAdmin(walletId);
+      }
+
+      // ── 관리자 전용 통계 (서브컬렉션) ──
+      match /adminStats/{statId} {
+        allow read, write: if isWalletAdmin(walletId);
+      }
+
+      // ── 용돈 요청 (서브컬렉션) ──
+      match /allowanceRequests/{reqId} {
+        allow read: if isWalletMember(walletId);
+
+        allow create: if isWalletMember(walletId)
+          && request.resource.data.keys().hasAll(['amount', 'userId'])
+          && request.resource.data.userId == request.auth.uid
+          && validAmount(request.resource.data.amount);
+
+        // 관리자만 응답(수정)
+        allow update: if isWalletAdmin(walletId);
+      }
+    }
+
+    // 그 외 모든 문서 접근 차단
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
